@@ -14,7 +14,12 @@ import { DEFAULT_CLINIC } from './clinic';
 import type { PaletteName } from '../styles/palettes';
 import type { Case as MedKitCase } from '../data/cases';
 import { CASES, getCase, getCaseClinic, getPatientCase } from '../data/cases';
-import { ensureAudioContext } from '../voice/conversationStore';
+import {
+  clearAllConversationStorage,
+  clearAllPatientConversations,
+  ensureAudioContext,
+  resetPatientConversation,
+} from '../voice/conversationStore';
 import type { AuthUser, SkillProfile } from './auth';
 import { clearAuth, getStoredToken, getStoredUser, persistAuth } from './auth';
 import { setTrainingFocus as setFocusContext } from './trainingContext';
@@ -113,7 +118,7 @@ class Store {
     tweaks: { ...DEFAULT_TWEAKS },
     onboardingStep: 0,
     endConfirm: { sum: false, safe: false, ice: false },
-    selectedCaseId: 'im-001',
+    selectedCaseId: 'ct-001',
     hasOnboarded: readOnboarded(),
     dialogueBackend: 'crc',
     polyclinic: { clinic: DEFAULT_CLINIC, patient: null },
@@ -291,12 +296,31 @@ class Store {
    *  next-patient flow walks the same roster, then jump to the brief. */
   selectCase = (id: string) => {
     const clinic = getCaseClinic(id);
+    // The polyclinic has one physical chair (bedIndex -10). Clear the prior
+    // occupant before navigating so EncounterScreen must initialise the case
+    // selected from the library, including a fresh persona and opening line.
+    resetPatientConversation(POLYCLINIC_BED_INDEX, id);
     this.set({
       selectedCaseId: id,
       screen: 'brief',
-      polyclinic: clinic
-        ? { ...this.state.polyclinic, clinic }
-        : this.state.polyclinic,
+      polyclinic: {
+        ...this.state.polyclinic,
+        ...(clinic ? { clinic } : {}),
+        patient: null,
+      },
+    });
+  };
+
+  /** Admin action: reset the whole demo shift and all patient openings. */
+  resetAllPatients = () => {
+    clearAllPatientConversations();
+    clearAllConversationStorage();
+    this.attemptedCaseIds.clear();
+    this.set({
+      selectedCaseId: CASES[0]?.id ?? 'ct-001',
+      polyclinic: { ...this.state.polyclinic, patient: null },
+      lastEncounter: null,
+      screen: 'home',
     });
   };
 

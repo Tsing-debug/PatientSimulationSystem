@@ -41,6 +41,7 @@ export async function crcCreateSession(opts: {
   study: string;
   randomPersona?: boolean;
   focus?: string;
+  openingLine?: string;
 }): Promise<CrcSessionPayload> {
   const res = await fetch('/api/sessions', {
     method: 'POST',
@@ -49,6 +50,7 @@ export async function crcCreateSession(opts: {
       study: opts.study,
       random_persona: Boolean(opts.randomPersona),
       focus: opts.focus || undefined,
+      opening_line: opts.openingLine || undefined,
     }),
   });
   const data = await parseJson(res);
@@ -128,7 +130,7 @@ export async function crcListStudies(): Promise<Array<{ stem: string; ready: boo
 
 /** Map medkit case ids → CRC study stems (opening/background artifacts). */
 const CASE_TO_STUDY: Record<string, string> = {
-  'ct-001': 'Chronic rhinosinusitis with nasal polyps',
+  'ct-001': 'Phloroglucinol Orally Disintegrating Tablets',
 };
 
 export const DEFAULT_CRC_STUDY = 'Chronic rhinosinusitis with nasal polyps';

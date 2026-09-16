@@ -555,6 +555,10 @@ export class Conversation {
         study: this.crcStudy,
         randomPersona: false,
         focus: getTrainingFocus(),
+        // The selected patient owns the opening line. The backend study is
+        // shared by the small demo roster, so never let its default opening
+        // overwrite this case-specific first sentence.
+        openingLine: this.initialMessage.content,
       });
       this.crcSessionId = session.session_id;
       this.crcRecordSubmitted = false;

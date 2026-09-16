@@ -32,6 +32,21 @@
         "家属参与",
         "情绪支持"
       ]
+    },
+    {
+      "stem": "Phloroglucinol Orally Disintegrating Tablets",
+      "label": "间苯三酚口崩片（生物等效性试验）",
+      "description": "适合练习向健康受试者介绍生物等效性试验流程、注意事项等，重点在于清晰传达信息。",
+      "difficulty": 2,
+      "focus_dimensions": [
+        "信息传递",
+        "知情同意"
+      ],
+      "tags": [
+        "健康受试者",
+        "生物等效性",
+        "首次入组"
+      ]
     }
   ]
 }

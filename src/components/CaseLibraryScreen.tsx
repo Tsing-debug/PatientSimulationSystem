@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { DoodleScatter, PatientFace, TopBar } from './primitives';
 import { CASES, CONDITION_COLORS, type Case } from '../data/cases';
-import { CLINIC_IDS, CLINIC_LABELS, type ClinicId } from '../game/clinic';
-import { store, useTweaks } from '../game/store';
+import { store, useStore, useTweaks } from '../game/store';
 
 interface CaseCardProps {
   c: Case;
@@ -119,88 +118,83 @@ function CaseCard({ c, delay = 0, avatarStyle }: CaseCardProps) {
   );
 }
 
-type ClinicFilter = ClinicId | 'all' | 'red-flag';
+type IndicationFilter = string | 'all' | 'red-flag';
 
-const CLINIC_ICON: Record<ClinicId, string> = {
-  'all-specialties': '🌈',
-  'internal-medicine': '🩺',
-  cardiology: '❤️',
-  neurology: '🧠',
-  neurosurgery: '🧠',
-  dermatology: '🌿',
-  endocrinology: '🍯',
-  gastroenterology: '🍽️',
-  pulmonology: '🫁',
-  nephrology: '💧',
-  rheumatology: '🦴',
-  hematology: '🩸',
-  oncology: '🎗️',
-  'infectious-disease': '🦠',
-  'allergy-immunology': '🌼',
-  psychiatry: '💭',
-  obgyn: '🌷',
-  urology: '💧',
-  ophthalmology: '👁️',
-  ent: '👂',
-  orthopedics: '🦴',
-  pmr: '🏃',
-  pediatrics: '🧸',
-  'general-surgery': '🔪',
-  'cardiothoracic-vascular-surgery': '🫀',
-};
+const INDICATION_ICON = '🧬';
+
+function rosterOrder(id: string, seed: number): number {
+  let value = Math.floor(seed * 0x7fffffff) ^ id.length;
+  for (let i = 0; i < id.length; i++) value = Math.imul(value ^ id.charCodeAt(i), 16777619);
+  return value >>> 0;
+}
 
 export function CaseLibraryScreen() {
   const tweaks = useTweaks();
-  const [filter, setFilter] = useState<ClinicFilter>('all');
+  const dialogueBackend = useStore((s) => s.dialogueBackend);
+  const [rosterSeed, setRosterSeed] = useState(() => Math.random());
+  const [filter, setFilter] = useState<IndicationFilter>('all');
 
-  // Group every case by its clinic once. The grouping respects
-  // CLINIC_IDS order so sections render in the same canonical order.
+  // CRC 主轨只展示已与入组前研究资产绑定的角色；普通门诊病例属于旧轨。
+  const availableCases = useMemo(
+    () => (dialogueBackend === 'crc' ? CASES.filter((c) => c.id === 'ct-001') : CASES),
+    [dialogueBackend],
+  );
+
+  // Group by the trial/project assigned by the admin catalogue. Diagnosis is
+  // displayed on each card but must not create extra patient groups.
   const grouped = useMemo(() => {
-    const map = new Map<ClinicId, Case[]>();
-    for (const id of CLINIC_IDS) {
-      if (id === 'all-specialties') continue;
-      map.set(id, []);
+    const map = new Map<string, Case[]>();
+    for (const c of availableCases) {
+      const list = map.get(c.trial) ?? [];
+      list.push(c);
+      map.set(c.trial, list);
     }
-    for (const c of CASES) {
-      const list = map.get(c.clinic);
-      if (list) list.push(c);
+    // Stable for this render, randomised again on every library entry or
+    // explicit regenerate click.
+    for (const list of map.values()) {
+      list.sort((a, b) => rosterOrder(a.id, rosterSeed) - rosterOrder(b.id, rosterSeed));
     }
     return map;
-  }, []);
+    // A fresh roster order is generated every time this screen mounts.
+  }, [availableCases, rosterSeed]);
 
   // Apply the active filter to the grouped data so we can render it as
   // sections without having to re-group inside the JSX.
-  const visibleGroups = useMemo<Array<[ClinicId, Case[]]>>(() => {
+  const visibleGroups = useMemo<Array<[string, Case[]]>>(() => {
     if (filter === 'red-flag') {
-      const out: Array<[ClinicId, Case[]]> = [];
-      for (const [clinic, list] of grouped) {
+      const out: Array<[string, Case[]]> = [];
+      for (const [trial, list] of grouped) {
         const reds = list.filter((c) => c.tags.some((t) => t.toLowerCase().includes('red flag')));
-        if (reds.length) out.push([clinic, reds]);
+        if (reds.length) out.push([trial, reds]);
       }
       return out;
     }
     if (filter === 'all') {
       return Array.from(grouped.entries()).filter(([, list]) => list.length > 0);
     }
-    const list = grouped.get(filter as ClinicId) ?? [];
-    return list.length ? [[filter as ClinicId, list]] : [];
+    const list = grouped.get(filter) ?? [];
+    return list.length ? [[filter, list]] : [];
   }, [grouped, filter]);
 
   const totalVisible = visibleGroups.reduce((n, [, list]) => n + list.length, 0);
 
   const shuffle = () => {
+    setRosterSeed(Math.random());
     const pool = visibleGroups.flatMap(([, list]) => list);
-    const fallback = pool.length > 0 ? pool : CASES;
+    const fallback = pool.length > 0 ? pool : availableCases;
+    if (fallback.length === 0) return;
     const pick = fallback[Math.floor(Math.random() * fallback.length)];
     store.selectCase(pick.id);
   };
 
-  const clinicChips: Array<{ id: ClinicFilter; label: string; icon?: string }> = [
-    { id: 'all', label: '全部门诊', icon: '🌈' },
+  const trialChips: Array<{ id: IndicationFilter; label: string; icon?: string }> = [
+    { id: 'all', label: '全部试验项目', icon: '🌈' },
     { id: 'red-flag', label: '仅看红旗病例', icon: '🚩' },
-    ...CLINIC_IDS.filter((id) => id !== 'all-specialties' && (grouped.get(id)?.length ?? 0) > 0).map(
-      (id) => ({ id: id as ClinicFilter, label: CLINIC_LABELS[id], icon: CLINIC_ICON[id] }),
-    ),
+    ...Array.from(grouped.keys()).map((trial) => ({
+      id: trial,
+      label: trial,
+      icon: INDICATION_ICON,
+    })),
   ];
 
   return (
@@ -230,7 +224,7 @@ export function CaseLibraryScreen() {
           <div>
             <h1 style={{ fontSize: 36, marginBottom: 4 }}>选择一位患者</h1>
             <div style={{ fontWeight: 600, color: 'var(--ink-2)', fontSize: 14 }}>
-              病例按门诊分组 —— 选择一个专科标签进行筛选。
+              患者按后台试验项目分组 —— 诊断仅作为病例信息展示。
             </div>
           </div>
         </div>
@@ -240,7 +234,7 @@ export function CaseLibraryScreen() {
           style={{ fontSize: 16, padding: '12px 22px', whiteSpace: 'nowrap' }}
           onClick={shuffle}
         >
-          🔀 随机 ({totalVisible})
+          🔀 随机重新生成 / Regenerate ({totalVisible})
         </button>
       </div>
 
@@ -254,7 +248,7 @@ export function CaseLibraryScreen() {
           alignItems: 'center',
         }}
       >
-        {clinicChips.map((chip) => (
+        {trialChips.map((chip) => (
           <span
             key={chip.id}
             className={`chip ${filter === chip.id ? 'butter' : ''}`}
@@ -269,8 +263,8 @@ export function CaseLibraryScreen() {
 
       {/* Grouped sections */}
       <div style={{ padding: '18px 28px 28px', display: 'flex', flexDirection: 'column', gap: 28 }}>
-        {visibleGroups.map(([clinic, list]) => (
-          <section key={clinic}>
+        {visibleGroups.map(([trial, list]) => (
+          <section key={trial}>
             <div
               style={{
                 display: 'flex',
@@ -281,9 +275,9 @@ export function CaseLibraryScreen() {
                 borderBottom: '3px dashed rgba(43,30,22,0.18)',
               }}
             >
-              <span style={{ fontSize: 22 }}>{CLINIC_ICON[clinic] ?? '🏥'}</span>
+              <span style={{ fontSize: 22 }}>{INDICATION_ICON}</span>
               <h2 style={{ fontSize: 22, margin: 0, letterSpacing: '-0.01em' }}>
-                {CLINIC_LABELS[clinic]}
+                {trial}
               </h2>
               <span className="chip" style={{ fontSize: 11, marginLeft: 6 }}>
                 {list.length} 例

@@ -25,7 +25,26 @@ export interface Case {
   /** The clinic / specialty this patient belongs to, so the library can filter
    *  by specialty as well as by condition. */
   clinic: ClinicId;
+  /** Trial/project that owns this participant. This is the library grouping key. */
+  trial: string;
 }
+
+// Trial ownership is deliberately explicit and separate from diagnosis.
+// The admin catalogue has three trial projects; patients are assigned to a
+// project here, while their medical indication remains in `cond`.
+export const TRIAL_LABELS = {
+  hypertension: '间苯三酚口崩片生物等效性试验 / CTR20263575',
+  internalMedicine: '内科慢病研究 / Internal Medicine Study',
+  cardiology: '心血管疾病研究 / Cardiovascular Study',
+} as const;
+
+const TRIAL_BY_CASE_ID: Record<string, string> = {
+  'ct-001': TRIAL_LABELS.hypertension,
+  'im-001': TRIAL_LABELS.internalMedicine,
+  'im-002': TRIAL_LABELS.internalMedicine,
+  'card-001': TRIAL_LABELS.cardiology,
+  'card-002': TRIAL_LABELS.cardiology,
+};
 
 // ── deterministic palette pickers ─────────────────────────────────────
 //
@@ -106,6 +125,7 @@ function toCase(p: PatientCase, clinic: ClinicId): Case {
     mood: pickMood(p),
     cond: diagLabel(p.correctDiagnosisId),
     clinic,
+    trial: TRIAL_BY_CASE_ID[p.id] ?? '未配置试验项目',
   };
 }
 

@@ -11,6 +11,8 @@ const ROLE_LABEL: Record<string, string> = {
   student: '学生',
 };
 
+const SUPPORTED_UPLOAD_EXTENSIONS = ['.json', '.doc', '.docx', '.pdf', '.html', '.htm', '.md', '.markdown', '.txt'];
+
 interface AdminStats {
   total_users: number;
   by_role: Record<string, number>;
@@ -44,7 +46,7 @@ interface ImportReview {
 }
 
 export function AdminScreen() {
-  const { authUser } = useGameState();
+  const { authUser, tweaks } = useGameState();
   const [tab, setTab] = useState<Tab>('users');
   const [users, setUsers] = useState<UserRow[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -63,6 +65,7 @@ export function AdminScreen() {
   const [tagsText, setTagsText] = useState('');
   const [jsonText, setJsonText] = useState('');
   const [generateAssets, setGenerateAssets] = useState(true);
+  const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadUsers = useCallback(async () => {
@@ -108,6 +111,16 @@ export function AdminScreen() {
   const handleImportFile = async (file: File): Promise<void> => {
     setError('');
     setNotice('');
+    const dot = file.name.lastIndexOf('.');
+    const extension = dot >= 0 ? file.name.slice(dot).toLowerCase() : '';
+    if (!SUPPORTED_UPLOAD_EXTENSIONS.includes(extension)) {
+      setError(`不支持 ${extension || '无扩展名'} 文件。请上传 DOC、DOCX、PDF、HTML、JSON、Markdown 或 TXT。`);
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setError('文件过大，单个文件不能超过 25 MB。');
+      return;
+    }
     setBusy(true);
     try {
       const fd = new FormData();
@@ -136,6 +149,7 @@ export function AdminScreen() {
       setDimsText((data.focus_dimensions ?? []).join('、'));
       setTagsText((data.tags ?? []).join('、'));
       setJsonText(JSON.stringify(data.cde ?? {}, null, 2));
+      setNotice(`✅ ${file.name} 解析完成，请在弹窗中审阅并确认登记。`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -223,14 +237,39 @@ export function AdminScreen() {
       <div style={{ padding: '28px 36px', maxWidth: 980, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18 }}>
           <h1 style={{ fontSize: 32 }}>管理后台</h1>
-          <button
-            type="button"
-            className="btn-plush ghost"
-            style={{ fontSize: 13, padding: '9px 14px' }}
-            onClick={() => store.setScreen('home')}
-          >
-            ← 返回主页
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              初始化难度 / Initial difficulty
+              <select
+                value={tweaks.intensity}
+                onChange={(event) => store.setIntensity(Number(event.target.value))}
+                style={{ border: '2px solid var(--line)', borderRadius: 8, padding: '3px 6px', fontWeight: 800 }}
+              >
+                <option value={1}>1 · 简单 / Easy</option>
+                <option value={2}>2 · 标准 / Standard</option>
+                <option value={3}>3 · 困难 / Hard</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn-plush primary"
+              style={{ fontSize: 13, padding: '9px 14px' }}
+              onClick={() => {
+                store.resetAllPatients();
+                setNotice('✅ 已初始化全部患者：清空旧对话、人设和首句；病例目录已保留 5 位患者。');
+              }}
+            >
+              ↻ 一键初始化全部患者
+            </button>
+            <button
+              type="button"
+              className="btn-plush ghost"
+              style={{ fontSize: 13, padding: '9px 14px' }}
+              onClick={() => store.setScreen('home')}
+            >
+              ← 返回主页
+            </button>
+          </div>
         </div>
 
         {/* 页签 */}
@@ -481,25 +520,68 @@ export function AdminScreen() {
               }}
             >
               <div style={{ fontWeight: 800 }}>病例目录（{catalog.length}）</div>
-              <button
-                type="button"
-                className="btn-plush primary"
-                style={{ fontSize: 13, padding: '9px 14px' }}
-                disabled={busy || !!review}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {busy ? '解析中…' : '📤 上传 CDE 临床试验'}
-              </button>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json,.docx,.pdf,.html,.htm,.md,.txt"
+                accept=".json,.doc,.docx,.pdf,.html,.htm,.md,.markdown,.txt"
                 style={{ display: 'none' }}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) void handleImportFile(f);
                 }}
               />
+            </div>
+            <div
+              role="button"
+              tabIndex={0}
+              aria-disabled={busy || !!review}
+              onClick={() => {
+                if (!busy && !review) fileInputRef.current?.click();
+              }}
+              onKeyDown={(event) => {
+                if ((event.key === 'Enter' || event.key === ' ') && !busy && !review) {
+                  event.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                if (!busy && !review) setDragActive(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = busy || review ? 'none' : 'copy';
+                if (!busy && !review) setDragActive(true);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragActive(false);
+                if (busy || review) return;
+                const file = event.dataTransfer.files?.[0];
+                if (file) void handleImportFile(file);
+              }}
+              style={{
+                border: `2px dashed ${dragActive ? 'var(--teal)' : 'rgba(30, 52, 58, 0.24)'}`,
+                borderRadius: 16,
+                padding: '22px 18px',
+                marginBottom: 14,
+                textAlign: 'center',
+                cursor: busy || review ? 'not-allowed' : 'pointer',
+                background: dragActive ? 'rgba(40, 138, 132, 0.10)' : 'rgba(255, 255, 255, 0.52)',
+                opacity: busy || review ? 0.58 : 1,
+                transition: 'border-color 150ms ease, background 150ms ease, opacity 150ms ease',
+              }}
+            >
+              <div style={{ fontSize: 26, marginBottom: 5 }}>📤</div>
+              <div style={{ fontWeight: 900, fontSize: 15 }}>
+                {busy ? '正在解析文件…' : dragActive ? '松开即可上传' : '拖拽临床试验文件到这里，或点击选择'}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', marginTop: 6 }}>
+                支持 DOC、DOCX、PDF、HTML、JSON、Markdown、TXT，最大 25 MB
+              </div>
             </div>
             {notice && (
               <div
@@ -538,18 +620,22 @@ export function AdminScreen() {
                       {s.description}
                     </div>
                   )}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                    {(s.focus_dimensions ?? []).map((d) => (
-                      <span key={d} className="chip mint">
-                        训练维度：{d}
-                      </span>
-                    ))}
-                    {(s.tags ?? []).map((t) => (
-                      <span key={t} className="chip">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
+                  {(s.focus_dimensions ?? []).length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink-2)' }}>训练维度：</span>
+                      {(s.focus_dimensions ?? []).map((d) => (
+                        <span key={d} className="chip mint">{d}</span>
+                      ))}
+                    </div>
+                  )}
+                  {(s.tags ?? []).length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 7 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink-2)' }}>场景标签：</span>
+                      {(s.tags ?? []).map((t) => (
+                        <span key={t} className="chip">{t}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -574,6 +660,9 @@ export function AdminScreen() {
         {/* —— 上传审阅 / 确认登记弹窗 —— */}
         {review && (
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="study-review-title"
             style={{
               position: 'fixed',
               inset: 0,
@@ -594,7 +683,7 @@ export function AdminScreen() {
               style={{ width: 'min(780px, 100%)', padding: 22 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 4 }}>
+              <div id="study-review-title" style={{ fontWeight: 900, fontSize: 20, marginBottom: 4 }}>
                 审阅登记 · 新增疾病类型
               </div>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 12 }}>

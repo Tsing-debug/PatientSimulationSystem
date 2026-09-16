@@ -101,7 +101,7 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
             </span>
             <h2 style={{ margin: 0, fontSize: 22, lineHeight: 1.1 }}>{c.name}</h2>
             <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--ink-2)' }}>
-              {c.age}岁 · {c.gender === 'F' ? '女' : '男'} · 第4周随访
+              {c.age}岁 · {c.gender === 'F' ? '女' : '男'} · 入组前咨询 · 尚未筛选
             </span>
           </div>
           <button
@@ -889,7 +889,7 @@ function DiagnoseTab({
   if (c.diagnosisOptions.length === 0) {
     return (
       <div className="plush" style={{ padding: 14, fontWeight: 700, color: 'var(--ink-2)' }}>
-        本随访无可选判定项。
+        本次入组前沟通无可选判定项。
       </div>
     );
   }
@@ -898,7 +898,7 @@ function DiagnoseTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontWeight: 700, color: 'var(--ink-2)' }}>
-        根据已采集的随访信息，判定受试者的依从性状态。
+        根据已完成的沟通，判断潜在受试者当前是否充分理解并适合进入下一步筛选。
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
         {shuffledOptions.map((dxId) => {
@@ -1137,7 +1137,7 @@ function RxTab({
     return (
       <div className="plush" style={{ padding: 14, fontWeight: 700, color: 'var(--ink-2)' }}>
         请先完成判定 —— 在
-        <strong> 判定 </strong> 标签页选择依从性状态后，处置模块才会解锁。
+        <strong> 判定 </strong> 标签页选择入组前沟通状态后，下一步安排才会解锁。
       </div>
     );
   }
@@ -1408,7 +1408,7 @@ function RxTab({
         style={{ fontSize: 18, padding: '14px 0' }}
         onClick={onDispatch}
       >
-        {submitted.length === 0 ? '无处置直接结束随访 →' : '结束随访 →'}
+        {submitted.length === 0 ? '无后续安排，结束沟通 →' : '结束入组前沟通 →'}
       </button>
     </div>
   );

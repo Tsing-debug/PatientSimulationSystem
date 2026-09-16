@@ -10,8 +10,8 @@ interface Item {
 }
 
 const ITEMS: Item[] = [
-  { id: 'sum', label: '你是否已向受试者复述确认？', sub: '简要回顾本次随访沟通要点。' },
-  { id: 'safe', label: '你是否已做安全网提示？', sub: '何时联系研究中心、出现哪些情况需要上报。' },
+  { id: 'sum', label: '你是否确认了受试者的理解？', sub: '请受试者用自己的话复述研究目的、流程、风险和权利。' },
+  { id: 'safe', label: '你是否说明了自愿原则？', sub: '可以拒绝、暂缓决定或随时退出，不会受到不当影响。' },
   { id: 'ice', label: '你是否回应了受试者的顾虑？', sub: '受试者是否感到被倾听、是否清楚下一步？' },
 ];
 
@@ -23,7 +23,7 @@ export function EndConfirmScreen() {
 
   return (
     <div className="screen" style={{ background: 'var(--cream)', position: 'relative' }}>
-      <TopBar here={5} steps={['试验项目', '高血压III期', '第4周随访', '简报', '随访进行中', '收尾']} />
+      <TopBar here={5} steps={['试验项目', c.trial, '入组前沟通', '简报', '沟通进行中', '收尾']} />
 
       <DoodleScatter
         items={[
@@ -153,7 +153,7 @@ export function EndConfirmScreen() {
               style={{ flex: 1 }}
               onClick={() => store.setScreen('encounter')}
             >
-              ← 返回随访诊室
+              ← 返回入组咨询室
             </button>
             <button
               type="button"
@@ -161,7 +161,7 @@ export function EndConfirmScreen() {
               style={{ flex: 1.4 }}
               onClick={() => store.setScreen('debrief')}
             >
-              结束随访 →
+              结束入组前沟通 →
             </button>
           </div>
         </div>

@@ -33,6 +33,9 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    watch: {
+      ignored: ['**/.venv/**', '**/__pycache__/**', '**/service/acknowledge/dialogue_sessions/**'],
+    },
     proxy: PROXY,
   },
   preview: {

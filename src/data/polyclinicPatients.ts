@@ -6819,8 +6819,46 @@ const cardiothoracicVascularSurgery: PatientCase[] = [
   },
 ];
 
+const preEnrollmentTrialCase: PatientCase = {
+  id: 'ct-001',
+  name: '王晨',
+  age: 32,
+  gender: 'M',
+  severity: 'stable',
+  arrivalBlurb: '间苯三酚口崩片生物等效性试验的潜在健康受试者，今天首次到访了解项目，尚未签署知情同意书，也未开始正式筛选。',
+  chiefComplaint: '我想先把这个试验到底做什么、有什么风险弄清楚，再决定要不要参加。',
+  vitals: { hr: 76, bp: '122/78', spo2: 99, temp: 36.5, rr: 16 },
+  anamnesis: [
+    { id: 'pre-understanding', question: '您目前对这个研究了解多少？', answer: '只知道是间苯三酚口崩片的试验，好像要比较两种药，具体怎么做还不清楚。', relevant: true },
+    { id: 'pre-motivation', question: '您为什么考虑参加这个研究？', answer: '朋友看到招募信息告诉我的。我想了解一下，也会考虑时间安排和补贴，但还没有决定。', relevant: true },
+    { id: 'pre-main-concern', question: '您现在最担心或最想先问清楚的是什么？', answer: '主要担心副作用、要抽多少次血，还有签字以后是不是就不能退出了。', relevant: true },
+    { id: 'pre-voluntary', question: '您是否清楚参加完全自愿，可以拒绝或中途退出？', answer: '我不太确定。我就是担心签了字以后反悔会有麻烦。', relevant: true },
+    { id: 'pre-medical-history', question: '既往有没有严重疾病、近期急性疾病或重大手术？', answer: '没有严重疾病，平时身体还可以，最近也没有生病或做手术。', relevant: true },
+    { id: 'pre-allergy', question: '有没有药物、食物、牛奶或乳糖相关的过敏或不耐受？', answer: '没有明确的药物和食物过敏，喝牛奶也没什么问题。', relevant: true },
+    { id: 'pre-oral-history', question: '有没有口干、口腔溃疡或其他口腔疾病？', answer: '偶尔上火会有小溃疡，但最近没有，也没有长期口干。', relevant: true },
+    { id: 'pre-medications', question: '过去28天用过处方药、非处方药、中草药、保健品或接种疫苗吗？', answer: '两周前感冒时吃过两次复方感冒药，具体名字需要回去看包装。保健品和疫苗没有。', relevant: true },
+    { id: 'pre-prior-trial', question: '过去90天参加过其他药物或医疗器械临床试验吗？', answer: '没有参加过，这是我第一次正式来咨询。', relevant: true },
+    { id: 'pre-donation', question: '过去90天有献血、大量失血、输血或使用血制品吗？', answer: '没有。', relevant: true },
+    { id: 'pre-smoking-alcohol', question: '平时吸烟、饮酒情况怎么样？', answer: '不吸烟，周末偶尔喝一两瓶啤酒，可以按试验要求停酒。', relevant: true },
+    { id: 'pre-diet', question: '能否遵守统一饮食和咖啡因、葡萄柚等饮食限制？', answer: '应该可以，但我平时每天喝咖啡，需要提前告诉我从什么时候开始停。', relevant: true },
+    { id: 'pre-blood-draw', question: '有没有晕针、晕血或静脉采血困难？', answer: '以前体检抽血有点紧张，但没有晕过。这个试验要抽多少次血？', relevant: true },
+    { id: 'pre-contraception', question: '是否理解研究期间及结束后3个月的避孕和不捐精要求？', answer: '招募信息里没看清楚这一条，希望你详细解释需要怎么做。', relevant: true },
+    { id: 'pre-family', question: '是否需要和家属商量后再决定？', answer: '需要。我想把流程、风险和时间安排带回去跟家里人商量。', relevant: true },
+    { id: 'pre-logistics', question: '到院、住院或时间安排方面有什么限制？', answer: '工作日请假需要提前安排，所以我想知道每次要来多久、总共要来几次。', relevant: true },
+  ],
+  testResults: [],
+  correctDiagnosisId: 'pre-enrollment-needs-clarification',
+  diagnosisOptions: [
+    'pre-enrollment-needs-clarification',
+    'pre-enrollment-ready-for-screening',
+    'pre-enrollment-pending-investigator-review',
+  ],
+  acceptableTreatmentIds: [],
+  criticalTreatmentIds: [],
+};
+
 const _bySpecialty = {
-  'internal-medicine': internalMedicine,
+  'internal-medicine': [preEnrollmentTrialCase, ...internalMedicine.filter((patient) => patient.id !== 'ct-001')],
   cardiology,
   neurology,
   neurosurgery,
@@ -6846,14 +6884,25 @@ const _bySpecialty = {
   'cardiothoracic-vascular-surgery': cardiothoracicVascularSurgery,
 };
 
+// Keep the demo roster intentionally small. The remaining source cases stay
+// in this file as reusable fixtures, but only these five are exposed to the
+// library and next-patient flow.
+const DEMO_PATIENT_IDS = new Set(['ct-001', 'im-001', 'im-002', 'card-001', 'card-002']);
+const _activeBySpecialty = Object.fromEntries(
+  Object.entries(_bySpecialty).map(([specialty, cases]) => [
+    specialty,
+    cases.filter((patient) => DEMO_PATIENT_IDS.has(patient.id)),
+  ]),
+) as typeof _bySpecialty;
+
 export const POLYCLINIC_CASES: Record<ClinicId, PatientCase[]> = {
-  ..._bySpecialty,
-  'all-specialties': Object.values(_bySpecialty).flat(),
+  ..._activeBySpecialty,
+  'all-specialties': Object.values(_activeBySpecialty).flat(),
 };
 
 const _caseIdToSpecialty: Map<string, ClinicId> = (() => {
   const map = new Map<string, ClinicId>();
-  for (const [specialty, cases] of Object.entries(_bySpecialty)) {
+  for (const [specialty, cases] of Object.entries(_activeBySpecialty)) {
     for (const c of cases) map.set(c.id, specialty as ClinicId);
   }
   return map;
@@ -6868,6 +6917,9 @@ export function getCaseSpecialty(caseId: string): ClinicId | undefined {
 
 export const POLYCLINIC_DIAGNOSIS_LABELS: Record<string, string> = {
   // Clinical trial
+  'pre-enrollment-needs-clarification': '入组前信息待充分沟通',
+  'pre-enrollment-ready-for-screening': '已理解并愿意进入筛选',
+  'pre-enrollment-pending-investigator-review': '资格待研究者进一步判断',
   'clinical-trial-adherence-issues': '临床试验依从性问题（需干预）',
   'clinical-trial-adequate-adherence': '临床试验依从性良好',
   'clinical-trial-safety-concern': '临床试验安全性问题（需上报）',

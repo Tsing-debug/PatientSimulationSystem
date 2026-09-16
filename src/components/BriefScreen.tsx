@@ -31,7 +31,7 @@ export function BriefScreen() {
 
   return (
     <div className="screen paper" style={{ position: 'relative' }}>
-      <TopBar here={3} steps={['试验项目', '高血压III期', '第4周随访', '随访简报']} />
+      <TopBar here={3} steps={['试验项目', c.trial, '入组前沟通', '沟通简报']} />
 
       <DoodleScatter
         items={[
@@ -71,13 +71,13 @@ export function BriefScreen() {
               marginBottom: 16,
             }}
           >
-            <span className="chip butter">随访简报</span>
-            <span className="chip">受试者编号：CT-001</span>
+            <span className="chip butter">入组前沟通简报</span>
+            <span className="chip">受试者编号：{c.id.toUpperCase()}</span>
           </div>
 
           <h1 style={{ fontSize: 32, lineHeight: 1.1, marginBottom: 4 }}>{c.name}</h1>
             <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink-2)', marginBottom: 16 }}>
-            {c.age} 岁 · {c.sex === 'F' ? '女' : '男'} · 入组后第4周门诊随访
+            {c.age} 岁 · {c.sex === 'F' ? '女' : '男'} · 潜在受试者 · 尚未正式筛选
           </div>
 
           <div
@@ -151,14 +151,14 @@ export function BriefScreen() {
                 marginBottom: 6,
               }}
             >
-              本次随访任务
+              本次沟通任务
             </div>
             <ol style={{ margin: 0, paddingLeft: 18, fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>
-              <li>询问过去4周服药依从性情况（漏服、迟服、自行停药）</li>
-              <li>询问不良事件（头晕等不适）及上报情况</li>
-              <li>核查合并用药（感冒药、原降压药等）</li>
-              <li>核对药盒数量、服药日记、家庭血压记录</li>
-              <li>指导规范记录，安排后续随访与安全联系方式</li>
+              <li>用通俗语言说明研究目的、设计、给药与采血安排</li>
+              <li>说明参加完全自愿、可以拒绝或随时退出，不作疗效承诺</li>
+              <li>了解既往病史、过敏史、近期用药及既往试验和献血情况</li>
+              <li>解释主要入排标准、饮食限制、避孕要求和潜在风险</li>
+              <li>回应时间、费用、补贴、隐私和家属商量等顾虑，并确认理解</li>
             </ol>
           </div>
         </div>
@@ -185,7 +185,7 @@ export function BriefScreen() {
               </div>
               <div>
                 <div style={{ fontWeight: 900, fontSize: 18 }}>{c.name}</div>
-                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 700 }}>随访诊室 · 候诊中</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 700 }}>入组咨询室 · 候诊中</div>
                 <div style={{ marginTop: 6 }} className="chip mint">
                   稳定受试者 · 标准化演员
                 </div>
@@ -243,7 +243,7 @@ export function BriefScreen() {
                   textTransform: 'uppercase',
                 }}
               >
-                预计随访时长
+                预计沟通时长
               </div>
               <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--peach-deep)' }}>12-15 分钟</div>
             </div>
@@ -269,7 +269,7 @@ export function BriefScreen() {
             style={{ fontSize: 22, padding: '18px 0' }}
             onClick={() => store.setScreen('encounter')}
           >
-            ✊ 叫号：李建国先生，请进随访室
+            ✊ 叫号：{c.name}{c.sex === 'F' ? '女士' : '先生'}，请进入组咨询室
           </button>
         </div>
       </div>

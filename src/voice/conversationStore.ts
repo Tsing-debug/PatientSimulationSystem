@@ -86,6 +86,22 @@ export function disposePatientConversation(bedIndex: number) {
   }
 }
 
+/**
+ * Start a genuinely fresh conversation for a patient. This is used when the
+ * trainee explicitly chooses a case from the library: the old in-memory
+ * conversation and its persisted transcript must not leak into the new
+ * encounter's persona or opening line.
+ */
+export function resetPatientConversation(bedIndex: number, caseId?: string) {
+  disposePatientConversation(bedIndex);
+  if (typeof window === 'undefined' || !caseId) return;
+  try {
+    window.localStorage.removeItem(`conv_history_${caseId}`);
+  } catch {
+    // localStorage may be blocked — the in-memory conversation is still reset.
+  }
+}
+
 export function clearAllPatientConversations() {
   for (const entry of cache.values()) entry.conv.dispose();
   cache.clear();

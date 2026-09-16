@@ -106,6 +106,8 @@ class StartSessionBody(BaseModel):
     random_persona: bool = False
     # 可选：本轮训练重点（来自能力画像推荐），会注入患者扮演提示
     focus: str | None = None
+    # 前端病例卡的首句；同一研究可挂多个患者，不能复用研究默认首句
+    opening_line: str | None = Field(default=None, max_length=500)
 
 
 class ReplyBody(BaseModel):
@@ -465,7 +467,10 @@ async def start_session(body: StartSessionBody) -> dict[str, Any]:
                 f"固定开局画像：{portrait.get('年龄', '?')}岁 / "
                 f"{portrait.get('学历', '')} / {portrait.get('交流特点', '')} / "
                 f"{portrait.get('试验经历', '')}"
-            )
+                )
+
+    if body.opening_line and body.opening_line.strip():
+        opening["患者台词"] = body.opening_line.strip()
 
     session_dir = _new_session_dir()
     session = DialogueSession.create_from_opening(
@@ -881,7 +886,7 @@ async def admin_import_study(
     file: UploadFile = File(...),
     user: dict[str, Any] = Depends(_current_user),
 ) -> dict[str, Any]:
-    """管理员上传 CDE 临床试验资料（docx / pdf / html / md / txt / json），
+    """管理员上传 CDE 临床试验资料（doc / docx / pdf / html / md / txt / json），
     抽取或校验成结构化登记草稿，用于新增一种疾病类型的训练病例。
 
     流程：文件落草稿目录（draft_id）→ 结构化 JSON 直接校验；
@@ -915,7 +920,7 @@ async def admin_import_study(
             text = extract_plain_text(raw, file.filename)
             async with CdeExtractAgent() as agent:
                 result = await agent.extract(text)
-            review = review_from_cde(result["cde"])
+            review = review_from_cde(result["cde"], result.get("suggest"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

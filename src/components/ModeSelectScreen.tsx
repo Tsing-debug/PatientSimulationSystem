@@ -204,7 +204,7 @@ export function ModeSelectScreen() {
             color="var(--mint)"
             doorColor="#5FCFA0"
             available
-            tags={['核心场景', '角色卡选择', '依从性·不良事件·合并用药·日记核对']}
+            tags={['核心场景', '角色卡选择', '知情同意·入排标准·风险与顾虑']}
             onOpen={() => {
               store.setDialogueBackend('crc');
               store.setScreen('library');

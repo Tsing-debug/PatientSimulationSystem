@@ -24,6 +24,9 @@ import io
 import json
 import logging
 import re
+import shutil
+import subprocess
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +46,7 @@ DEFAULT_TIMEOUT = 180.0
 TEXT_EXTENSIONS = {".md", ".markdown", ".txt"}
 HTML_EXTENSIONS = {".html", ".htm"}
 DOCX_EXTENSIONS = {".docx"}
+DOC_EXTENSIONS = {".doc"}
 PDF_EXTENSIONS = {".pdf"}
 JSON_EXTENSIONS = {".json"}
 
@@ -193,6 +197,117 @@ def _extract_docx(data: bytes) -> str:
     return text
 
 
+def _extract_doc_with_cli(data: bytes) -> str:
+    """用 antiword/catdoc/LibreOffice 读取旧版二进制 Word 文档。"""
+    with tempfile.TemporaryDirectory(prefix="cde_doc_") as tmp:
+        tmp_dir = Path(tmp)
+        source = tmp_dir / "source.doc"
+        source.write_bytes(data)
+
+        for command in ("antiword", "catdoc"):
+            executable = shutil.which(command)
+            if not executable:
+                continue
+            try:
+                completed = subprocess.run(
+                    [executable, str(source)],
+                    capture_output=True,
+                    check=False,
+                    timeout=60,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if completed.returncode == 0 and completed.stdout:
+                text = _decode_utf8(completed.stdout).strip()
+                if text:
+                    return text
+
+        soffice = shutil.which("soffice") or shutil.which("libreoffice")
+        if soffice:
+            try:
+                completed = subprocess.run(
+                    [
+                        soffice,
+                        "--headless",
+                        "--convert-to",
+                        "txt:Text",
+                        "--outdir",
+                        str(tmp_dir),
+                        str(source),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=90,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                completed = None
+            converted = tmp_dir / "source.txt"
+            if completed and completed.returncode == 0 and converted.is_file():
+                text = _decode_utf8(converted.read_bytes()).strip()
+                if text:
+                    return text
+    return ""
+
+
+def _extract_doc_with_word(data: bytes) -> str:
+    """Windows 上通过本机 Microsoft Word 安全地读取旧版 .doc。"""
+    try:
+        import pythoncom  # type: ignore
+        import win32com.client  # type: ignore
+    except ImportError as exc:
+        raise ValueError(
+            "旧版 .doc 需要 Microsoft Word + pywin32，或服务器安装 LibreOffice/antiword；"
+            "也可以在 Word 中另存为 .docx 后上传。"
+        ) from exc
+
+    with tempfile.TemporaryDirectory(prefix="cde_doc_") as tmp:
+        source = Path(tmp) / "source.doc"
+        source.write_bytes(data)
+        word: Any = None
+        document: Any = None
+        pythoncom.CoInitialize()
+        try:
+            word = win32com.client.DispatchEx("Word.Application")
+            word.Visible = False
+            word.DisplayAlerts = 0
+            # msoAutomationSecurityForceDisable，避免上传文档运行宏。
+            word.AutomationSecurity = 3
+            document = word.Documents.Open(
+                str(source.resolve()),
+                ConfirmConversions=False,
+                ReadOnly=True,
+                AddToRecentFiles=False,
+                PasswordDocument="",
+                NoEncodingDialog=True,
+            )
+            text = str(document.Content.Text or "").replace("\r", "\n").strip()
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"旧版 .doc 解析失败：{exc}") from exc
+        finally:
+            if document is not None:
+                try:
+                    document.Close(False)
+                except Exception:  # noqa: BLE001
+                    pass
+            if word is not None:
+                try:
+                    word.Quit()
+                except Exception:  # noqa: BLE001
+                    pass
+            pythoncom.CoUninitialize()
+    if not text:
+        raise ValueError(".doc 内未提取到文本，可能为空文档、加密文档或扫描图片")
+    return text
+
+
+def _extract_doc(data: bytes) -> str:
+    """读取 Word 97-2003 .doc；跨平台工具优先，Windows Word 作为后备。"""
+    text = _extract_doc_with_cli(data)
+    if text:
+        return text
+    return _extract_doc_with_word(data)
+
+
 def _extract_pdf(data: bytes) -> str:
     """PDF 需要第三方解析库；没有就给出明确提示。"""
     reader: Any = None
@@ -258,10 +373,12 @@ def extract_plain_text(data: bytes, filename: str) -> str:
         return text
     if suffix in DOCX_EXTENSIONS:
         return _extract_docx(data)
+    if suffix in DOC_EXTENSIONS:
+        return _extract_doc(data)
     if suffix in PDF_EXTENSIONS:
         return _extract_pdf(data)
     raise ValueError(
-        f"暂不支持 .{suffix.lstrip('.')} 格式；请上传 docx / pdf / html / md / txt / json。"
+        f"暂不支持 .{suffix.lstrip('.')} 格式；请上传 doc / docx / pdf / html / md / txt / json。"
     )
 
 
@@ -560,24 +677,59 @@ def suggestion_from_cde(cde: dict[str, Any]) -> dict[str, Any]:
     """结构化 JSON 上传时，不需要 LLM，直接从字段拼一份建议。"""
     tab = cde.get("title_and_background") or {}
     basic = cde.get("basic_info") or {}
-    indication = str(tab.get("indication") or "")
-    phase = str(tab.get("phase") or "")
-    drug = str(tab.get("drug_name") or "")
-    label = f"{indication}（{phase}试验）" if indication and phase else (indication or drug or "未命名病例")
+    indication = str(tab.get("indication") or "").strip()
+    phase = str(tab.get("phase") or "").strip()
+    drug = str(tab.get("drug_name") or "").strip()
+    registration_no = str(basic.get("registration_no") or "").strip()
+    public_title = str(tab.get("public_title") or tab.get("scientific_title") or "").strip()
+
+    # 展示名只取第一项适应症，避免把一整串分号列表塞进卡片标题。
+    first_indication = re.split(r"[；;。\n]", indication, maxsplit=1)[0].strip()
+    if indication and first_indication != indication:
+        first_indication += "等"
+    phase_label = phase if "试验" in phase else (f"{phase}试验" if phase else "")
+    subject = first_indication or drug or registration_no or "未命名病例"
+    label = f"{subject}（{phase_label}）" if phase_label else subject
+
+    # CTR 登记号天然唯一、英文安全，优先作为文件键名兜底。
+    safe_registration = re.sub(r"[^A-Za-z0-9._-]+", "-", registration_no).strip("-._")
+    safe_drug = re.sub(r"[^A-Za-z0-9._-]+", "-", drug).strip("-._")
+    stem = safe_registration or safe_drug
+
+    summary = public_title or indication or drug
+    if registration_no and summary:
+        description = f"{registration_no}：{summary}"
+    else:
+        description = summary or f"{subject}沟通训练"
     return {
-        "stem": "",
+        "stem": stem,
         "label": label,
-        "description": f"{drug or '该试验'}：{str(tab.get('public_title') or indication or '')}".strip("："),
+        "description": description[:240],
         "difficulty": 1,
         "focus_dimensions": ["信息传递", "知情同意"],
         "tags": ["首次入组"] if indication else [],
     }
 
 
-def review_from_cde(cde: dict[str, Any]) -> dict[str, Any]:
+def review_from_cde(
+    cde: dict[str, Any],
+    model_suggest: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """import 接口的返回：把抽取结果与建议合并成一个可审阅的 review 对象。"""
     cde = _normalize_cde(cde)
-    suggest = suggestion_from_cde(cde)
+    fallback = suggestion_from_cde(cde)
+    if isinstance(model_suggest, dict):
+        generated = _normalize_suggest(model_suggest)
+        suggest = {
+            "stem": generated["stem"] or fallback["stem"],
+            "label": generated["label"] or fallback["label"],
+            "description": generated["description"] or fallback["description"],
+            "difficulty": generated["difficulty"],
+            "focus_dimensions": generated["focus_dimensions"] or fallback["focus_dimensions"],
+            "tags": generated["tags"] or fallback["tags"],
+        }
+    else:
+        suggest = fallback
     warnings: list[str] = []
     basic = cde.get("basic_info") or {}
     tab = cde.get("title_and_background") or {}

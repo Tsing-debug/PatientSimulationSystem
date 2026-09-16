@@ -397,7 +397,7 @@ export function EncounterScreen() {
 
   return (
     <div className="screen" style={{ background: 'var(--cream)', position: 'relative' }}>
-      <TopBar here={4} steps={['试验项目', '高血压III期', '第4周随访', '简报', '随访进行中']} />
+      <TopBar here={4} steps={['试验项目', 'CTR20263575', '入组前沟通', '简报', '沟通进行中']} />
 
       <div
         style={{
@@ -461,7 +461,7 @@ export function EncounterScreen() {
             }}
             style={{ fontSize: 14, padding: '12px 18px' }}
           >
-            结束随访 →
+            结束沟通 →
           </button>
         </div>
 

@@ -409,10 +409,10 @@ function makeMonitorTexture(patient: MonitorPatient | null): CanvasTexture {
   ctx.fillRect(0, 0, w, 40);
   ctx.fillStyle = '#3B2A1F';
   ctx.font = 'bold 17px "Nunito", sans-serif';
-  ctx.fillText('mRNA train · 受试者随访记录', 14, 26);
+  ctx.fillText('CRC train · 入组前沟通记录', 14, 26);
   ctx.fillStyle = '#5FCFA0';
   ctx.font = 'bold 12px "Nunito", sans-serif';
-  ctx.fillText('● 随访进行中', w - 150, 26);
+  ctx.fillText('● 入组沟通进行中', w - 150, 26);
 
   // Card frame with the signature plush outline.
   ctx.strokeStyle = '#2B1E16';
@@ -2556,7 +2556,7 @@ function SeatedDoctorInteractable({ patientName }: { patientName: string | null 
         id: 'polyclinic-active-patient',
         position: PATIENT_CHAIR_POS,
         radius: 100,
-        prompt: `E — 随访评估   ·   T — 与 ${patientName} 对话`,
+        prompt: `E — 入组沟通评估   ·   T — 与 ${patientName} 对话`,
         kind: 'bed',
         bedIndex: POLYCLINIC_BED_INDEX,
       });
@@ -2567,7 +2567,7 @@ function SeatedDoctorInteractable({ patientName }: { patientName: string | null 
       id: 'polyclinic-archive',
       position: DESK_POS,
       radius: 100,
-      prompt: 'E — 随访记录',
+      prompt: 'E — 入组沟通记录',
       kind: 'desk',
     });
     return () => interactionBus.unregister('polyclinic-archive');

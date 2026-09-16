@@ -22,6 +22,8 @@ tsconfig.tsbuildinfo
 **/__pycache__/
 service/accounts/users.json
 service/accounts/training_records.json
+service/acknowledge/dialogue_sessions/
+service/acknowledge/uploaded_trials/
 
 # `skills` CLI (vercel-labs/skills) — installed locally, not committed
 /.agents/
