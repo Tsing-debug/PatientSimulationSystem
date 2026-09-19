@@ -639,6 +639,33 @@ async def tts_raw(body: TtsBody) -> Response:
     return Response(content=audio, media_type="audio/mpeg")
 
 
+@app.post("/api/stt")
+async def speech_to_text(
+    audio: UploadFile = File(...),
+) -> dict[str, Any]:
+    """只做语音识别，返回文本，不触发患者回复。
+
+    供问诊界面右下角对话面板的麦克风按钮使用：医生说完一段后文字
+    先进输入框可编辑，由医生确认后再发送 —— 与 voice/turn（识别即
+    发送）分开。
+    """
+    raw = await audio.read()
+    if not raw or len(raw) < 256:
+        raise HTTPException(status_code=400, detail="音频太短或为空")
+
+    fmt = _guess_upload_format(audio.filename, audio.content_type)
+    asr_cfg = ASRConfig.from_env(audio_format=fmt)
+    try:
+        asr = await recognize_bytes(raw, config=asr_cfg)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"ASR 失败: {exc}") from exc
+
+    text = (asr.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="未识别到有效语音，请再说一遍")
+    return {"text": text}
+
+
 @app.post("/api/sessions/{session_id}/voice/turn")
 async def voice_turn(
     session_id: str,

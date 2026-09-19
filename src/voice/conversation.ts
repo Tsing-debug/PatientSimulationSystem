@@ -792,6 +792,24 @@ export class Conversation {
       return;
     }
 
+    // LiveKit path: hand the typed line to the voice agent so the patient
+    // answers OUT LOUD through the same TTS pipeline a spoken turn uses.
+    // The reply arrives asynchronously via TranscriptionReceived, which
+    // already pushes it into `messages` — so we must NOT also run the
+    // text-only stream below (that would produce two answers). Falls back
+    // to the HTTP stream when the worker predates the `say_text` RPC.
+    if (this.room && this.room.state === 'connected') {
+      const voiced = await this.askAgentAloud(clean);
+      if (voiced) {
+        // Status flips on its own when the agent's transcription lands.
+        // Safety net in case the agent never speaks (LLM/TTS failure).
+        window.setTimeout(() => {
+          if (this.status === 'thinking') this.setStatus('ready');
+        }, 9000);
+        return;
+      }
+    }
+
     const controller = new AbortController();
     let assistantText = '';
     try {
@@ -816,6 +834,28 @@ export class Conversation {
       this.emitMessages();
     }
     this.setStatus('ready');
+  }
+
+  /** Ask the LiveKit voice agent to answer a typed line out loud.
+   *  Resolves false when the RPC isn't available (worker not restarted). */
+  private async askAgentAloud(text: string): Promise<boolean> {
+    const room = this.room;
+    if (!room || room.state !== 'connected') return false;
+    const remotes = Array.from(room.remoteParticipants.values());
+    const agent =
+      remotes.find((p) => p.identity.startsWith('agent-')) ?? remotes[0];
+    if (!agent) return false;
+    try {
+      await room.localParticipant.performRpc({
+        destinationIdentity: agent.identity,
+        method: 'say_text',
+        payload: text,
+      });
+      return true;
+    } catch (err) {
+      console.warn('[say_text] RPC unavailable — falling back to text stream:', err);
+      return false;
+    }
   }
 
   reset() {

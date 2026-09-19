@@ -22,6 +22,7 @@ import {
 import { TopBar } from './primitives';
 import { ExamineOverlay } from './ExamineOverlay';
 import { DockedVoicePanel } from './DockedVoicePanel';
+import { DoctorComposer } from './DoctorComposer';
 
 /** Adaptive FOV: keeps the horizontal FOV near 82° regardless of viewport
  *  aspect, plus a hold-Z (or scroll wheel) "lean in" zoom. */
@@ -440,12 +441,13 @@ export function EncounterScreen() {
 
         {pointerLocked && <Crosshair />}
 
-        {/* Action buttons — always visible, bottom-right */}
+        {/* Action buttons — bottom-left now; the bottom-right corner belongs
+            to the doctor composer dock. */}
         <div
           style={{
             position: 'absolute',
             bottom: 18,
-            right: 18,
+            left: 18,
             zIndex: 6,
             display: 'flex',
             gap: 10,
@@ -465,11 +467,12 @@ export function EncounterScreen() {
           </button>
         </div>
 
-        {/* Hint chip — non-blocking. Adapts to whether mouse-look is engaged. */}
+        {/* Hint chip — non-blocking. Sits above the action button.
+            Adapts to whether mouse-look is engaged. */}
         <div
           style={{
             position: 'absolute',
-            bottom: 18,
+            bottom: 70,
             left: 18,
             zIndex: 6,
             display: 'flex',
@@ -545,6 +548,15 @@ export function EncounterScreen() {
             }}
           />
         </>
+      )}
+
+      {/* First-person composer — the doctor's own speech surface. Hidden
+          while the Examine overlay is open (its 对话 tab owns typing then). */}
+      {!examineOpen && voiceActive && patient && (
+        <DoctorComposer
+          patientName={patient.case.name}
+          lookEngaged={lookMode || pointerLocked}
+        />
       )}
     </div>
   );

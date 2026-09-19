@@ -160,6 +160,42 @@ async def entrypoint(ctx: agents.JobContext):
     # RPC method invoked by the doctor's browser when they click "Dispatch".
     # Speaks ONE short goodbye via direct TTS so the patient actually says
     # bye out loud before the room is torn down.
+    # RPC method invoked by the doctor's browser when they TYPE a line
+    # into the composer dock instead of speaking it. We need the patient
+    # to answer OUT LOUD through the same TTS path, otherwise typed turns
+    # come back as silent text while spoken turns are voiced.
+    #
+    # Returns immediately ("ok") and speaks in a background task — the
+    # frontend must not block on the full LLM+TTS round-trip, or its RPC
+    # timeout would fire and fall back to the text-only stream (double reply).
+    @ctx.room.local_participant.register_rpc_method("say_text")
+    async def _on_say_text(data: rtc.RpcInvocationData) -> str:
+        text = (data.payload or "").strip()
+        if not text:
+            return "empty"
+        logger.info("rpc say_text from %s: %r", data.caller_identity, text[:120])
+
+        if dg_language.startswith("zh"):
+            instr = (
+                f'严格保持角色。医生（研究者）刚刚对你说了这句话：“{text}”。'
+                f'用中文口语化回答，只说 1-2 句短话。不要旁白、不要括号、不要星号、不要动作描写。'
+            )
+        else:
+            instr = (
+                f'Stay strictly in character. The doctor just said: "{text}". '
+                f'Reply naturally in spoken English, 1-2 short sentences only. '
+                f'No stage directions, no brackets, no asterisks, no actions.'
+            )
+
+        async def _speak() -> None:
+            try:
+                await session.generate_reply(instructions=instr)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.exception("say_text generate_reply failed: %s", e)
+
+        asyncio.create_task(_speak())
+        return "ok"
+
     @ctx.room.local_participant.register_rpc_method("farewell")
     async def _on_farewell(data: rtc.RpcInvocationData) -> str:
         logger.info("rpc farewell invoked by %s", data.caller_identity)

@@ -93,7 +93,7 @@ export function SplashScreen() {
             }}
           >
             mRNA
-            <span style={{ color: 'var(--peach)' }}>train</span>
+            <span style={{ color: 'var(--peach)' }}>patientSIM</span>
             <span className="wobble" style={{ display: 'inline-block', marginLeft: 8, marginBottom: 30 }}>
               <Doodle kind="cross" size={86} color="#F47A92" />
             </span>
