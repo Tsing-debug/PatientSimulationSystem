@@ -58,6 +58,9 @@ export function BackgroundMusic() {
 
   const toggle = () => {
     const next = !userMuted;
+    // Start inside the trusted click, not a later React effect (autoplay).
+    shouldPlayRef.current = !next && !inSession;
+    setHospitalBgmDesired(shouldPlayRef.current);
     setUserMuted(next);
     writeMuted(next);
   };
@@ -69,6 +72,8 @@ export function BackgroundMusic() {
     <button
       type="button"
       onClick={toggle}
+      disabled={inSession}
+      aria-pressed={!off}
       title={
         userMuted
           ? '音乐已静音 — 点击开启'
@@ -76,7 +81,7 @@ export function BackgroundMusic() {
             ? '问诊进行中，医院背景乐已暂停'
             : '医院背景乐播放中 — 点击静音'
       }
-      aria-label={userMuted ? '开启音乐' : '静音音乐'}
+      aria-label={inSession ? '问诊中背景音乐已暂停' : userMuted ? '开启音乐' : '静音音乐'}
       style={{
         position: 'fixed',
         top: 18,

@@ -528,10 +528,24 @@ class CdeExtractAgent:
             "请把下面的临床试验资料抽取为 JSON（资料可能较长，逐段阅读，不要遗漏入排标准）。\n\n"
             f"【资料原文】\n{text[:60000]}"
         )
-        reply, usage = await self._chat(
-            [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        )
-        parsed = _parse_json_reply(reply)
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        for attempt in range(4):
+            reply, usage = await self._chat(messages)
+            try:
+                parsed = _parse_json_reply(reply)
+                if not isinstance(parsed.get("cde"), dict) or not isinstance(parsed.get("suggest"), dict):
+                    raise RuntimeError("JSON 必须包含对象类型的 cde 和 suggest 字段")
+                break
+            except RuntimeError as exc:
+                if attempt == 3:
+                    raise RuntimeError("试验资料解析失败：模型连续返回不合法的 JSON，已自动重试 3 次，尚未登记任何试验。请稍后重新上传。") from exc
+                # Regenerate from the original source; never guess edits to
+                # medical facts or silently normalize a malformed response.
+                messages = [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user + "\n\n上一次输出校验失败：" + str(exc) +
+                     "\n请重新从原文抽取完整 JSON。检查字段间逗号、字符串中的双引号转义和括号闭合；只返回合法 JSON，不要编造或省略原文信息。"},
+                ]
         cde = parsed.get("cde") if isinstance(parsed.get("cde"), dict) else {}
         suggest = parsed.get("suggest") if isinstance(parsed.get("suggest"), dict) else {}
         return {"cde": _normalize_cde(cde), "suggest": _normalize_suggest(suggest), "usage": usage}

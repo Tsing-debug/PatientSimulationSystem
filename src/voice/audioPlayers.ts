@@ -97,3 +97,19 @@ export function playPatientBase64Mp3(b64: string): HTMLAudioElement | null {
 /** Back-compat aliases used by CRC client. */
 export const stopCrcAudio = stopPatientAudio;
 export const playBase64Mp3 = playPatientBase64Mp3;
+
+// Vite replaces this module during development. Detached Audio elements keep
+// playing unless explicitly stopped, leaving the new toggle unable to mute them.
+const hot = (import.meta as ImportMeta & {
+  hot?: { dispose: (callback: () => void) => void };
+}).hot;
+hot?.dispose(() => {
+  bgmWanted = false;
+  if (bgm) {
+    bgm.pause();
+    bgm.removeAttribute('src');
+    bgm.load();
+    bgm = null;
+  }
+  stopPatientAudio();
+});

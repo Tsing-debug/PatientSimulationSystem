@@ -19,3 +19,6 @@ dependencies = [
 dev = [
   "pytest>=8,<10",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

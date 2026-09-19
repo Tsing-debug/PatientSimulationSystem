@@ -29,21 +29,32 @@ export interface Case {
   trial: string;
 }
 
+export interface ReadyStudy {
+  patient_card_deleted?: boolean;
+  stem: string;
+  label: string;
+  description?: string;
+  tags?: string[];
+  ready: boolean;
+  opening?: Record<string, unknown>;
+  personal_seed?: number | null;
+}
+
 // Trial ownership is deliberately explicit and separate from diagnosis.
-// The admin catalogue has three trial projects; patients are assigned to a
-// project here, while their medical indication remains in `cond`.
+// Keep these labels aligned with the CRC study catalogue: the student roster
+// exposes one initialized patient for each ready trial.
 export const TRIAL_LABELS = {
-  hypertension: '间苯三酚口崩片生物等效性试验 / CTR20263575',
-  internalMedicine: '内科慢病研究 / Internal Medicine Study',
-  cardiology: '心血管疾病研究 / Cardiovascular Study',
+  phloroglucinol: '间苯三酚口崩片（生物等效性试验）',
+  bCell: 'B 细胞恶性肿瘤（治疗意愿沟通）',
+  nonHodgkin: '非霍奇金淋巴瘤（Ib/Ⅱ期试验）',
+  chronicRhino: '慢性鼻窦炎伴鼻息肉（III 期试验）',
 } as const;
 
 const TRIAL_BY_CASE_ID: Record<string, string> = {
-  'ct-001': TRIAL_LABELS.hypertension,
-  'im-001': TRIAL_LABELS.internalMedicine,
-  'im-002': TRIAL_LABELS.internalMedicine,
-  'card-001': TRIAL_LABELS.cardiology,
-  'card-002': TRIAL_LABELS.cardiology,
+  'ct-001': TRIAL_LABELS.phloroglucinol,
+  'im-001': TRIAL_LABELS.bCell,
+  'im-002': TRIAL_LABELS.nonHodgkin,
+  'card-001': TRIAL_LABELS.chronicRhino,
 };
 
 // ── deterministic palette pickers ─────────────────────────────────────
@@ -144,6 +155,138 @@ for (const [clinic, list] of Object.entries(POLYCLINIC_CASES) as Array<[ClinicId
 }
 
 export const CASES: Case[] = ALL_CASES_RAW;
+
+function dynamicCaseId(stem: string): string {
+  return `crc-study-${hash(stem).toString(36)}`;
+}
+
+/** Merge backend-ready CRC studies into the live roster. The exported CASES
+ *  array is intentionally mutated in place because the store and screens all
+ *  share this catalogue instance. Returns the ids newly added this run. */
+export function registerReadyStudies(
+  studies: ReadyStudy[],
+  languages: Record<string, string> = {},
+): string[] {
+  const added: string[] = [];
+  const wanted = new Set(studies.filter(s => s.ready && !s.patient_card_deleted).map(s => dynamicCaseId(s.stem)));
+  for (let i = CASES.length - 1; i >= 0; i--) {
+    const id = CASES[i].id;
+    if (id.startsWith('crc-study-') && !wanted.has(id)) {
+      CASES.splice(i, 1);
+      BY_ID.delete(id);
+      added.push(id);
+    }
+  }
+  for (const study of studies) {
+    if (study.patient_card_deleted) {
+      const removedId = dynamicCaseId(study.stem);
+      const index = CASES.findIndex((card) => card.id === removedId);
+      if (index >= 0) {
+        CASES.splice(index, 1);
+        BY_ID.delete(removedId);
+        added.push(removedId); // Notify subscribers of catalogue removals too.
+      }
+      continue;
+    }
+    if (!study.ready || !study.stem.trim()) continue;
+    const id = dynamicCaseId(study.stem);
+    const personalSeed = Number.isFinite(Number(study.personal_seed))
+      ? Number(study.personal_seed)
+      : null;
+    const opening = study.opening && typeof study.opening === 'object' ? study.opening : {};
+    const profile = opening['患者画像'] && typeof opening['患者画像'] === 'object'
+      ? opening['患者画像'] as Record<string, unknown>
+      : {};
+    const chineseOpening = typeof opening['患者台词'] === 'string'
+      ? opening['患者台词']
+      : '您好，我想先详细了解一下这个试验。';
+    const language: 'zh' | 'en' = languages[study.label || study.stem] === 'en' ? 'en' : 'zh';
+    const personalOpenings = language === 'en'
+      ? [
+          'Hello. Could you explain what I would need to do in this trial?',
+          'Before I decide, I would like to understand the risks and time commitment.',
+          'I have a few questions about screening and whether I can withdraw later.',
+        ]
+      : [
+          '您好，我想先弄清楚参加这个试验具体需要做什么。',
+          '我决定之前，想详细了解风险和时间安排。',
+          '我对筛选流程和以后能不能退出还有一些疑问。',
+        ];
+    const openingLine = personalSeed != null
+      ? personalOpenings[Math.abs(personalSeed) % personalOpenings.length]
+      : language === 'en'
+        ? 'Hello. I would like to understand this clinical trial before I decide whether to take part.'
+        : chineseOpening;
+    const ageValue = Number(profile['年龄']);
+    const age = personalSeed != null
+      ? 20 + Math.abs(personalSeed % 41)
+      : Number.isFinite(ageValue) && ageValue > 0 ? Math.round(ageValue) : 35;
+    const gender: 'M' | 'F' = hash(`${study.stem}-${personalSeed ?? 'global'}-gender`) % 2 === 0 ? 'F' : 'M';
+    const existing = BY_ID.get(id)?.p;
+    if (existing) {
+      const card = CASES.find((item) => item.id === id);
+      const tags = Array.isArray(study.tags) ? study.tags.map(String) : [];
+      const condition = study.description?.trim() || study.label;
+      if (existing.crcLanguage !== language || existing.chiefComplaint !== openingLine ||
+          existing.age !== age || existing.gender !== gender ||
+          card?.trial !== study.label || card?.cond !== condition || JSON.stringify(card?.tags) !== JSON.stringify(tags)) {
+        added.push(id);
+      }
+      existing.crcLanguage = language;
+      existing.chiefComplaint = openingLine;
+      existing.arrivalBlurb = openingLine;
+      existing.age = age;
+      existing.gender = gender;
+      if (card) Object.assign(card, {
+        complaint: openingLine,
+        age,
+        sex: gender,
+        trial: study.label || study.stem,
+        cond: condition,
+        tags,
+        skin: pickSkin(existing),
+        hair: pickHair(existing),
+      });
+      continue;
+    }
+    const patient: PatientCase = {
+      id,
+      name: '标准化受试者',
+      age,
+      gender,
+      severity: 'stable',
+      arrivalBlurb: openingLine,
+      chiefComplaint: openingLine,
+      vitals: { hr: 76, bp: '118/76', spo2: 98, temp: 36.6, rr: 16 },
+      anamnesis: [],
+      testResults: [],
+      correctDiagnosisId: study.stem,
+      acceptableTreatmentIds: [],
+      criticalTreatmentIds: [],
+      diagnosisOptions: [study.stem],
+      crcStudy: study.stem,
+      crcLanguage: language,
+    };
+    const clinic: ClinicId = 'internal-medicine';
+    BY_ID.set(id, { p: patient, clinic });
+    CASES.push({
+      ...toCase(patient, clinic),
+      complaint: openingLine,
+      cond: study.description?.trim() || study.label,
+      tags: Array.isArray(study.tags) ? study.tags.map(String) : [],
+      guideline: 'CRC 入组前沟通',
+      trial: study.label || study.stem,
+    });
+    added.push(id);
+  }
+  // Existing built-in CRC patients also honour the persisted per-trial choice.
+  for (const card of CASES) {
+    const patient = BY_ID.get(card.id)?.p;
+    if (!patient || !(card.trial in languages)) continue;
+    patient.crcLanguage = languages[card.trial] === 'en' ? 'en' : 'zh';
+  }
+  return added;
+}
 
 /** 目录中所有不同的病种标签，外加几个固定的筛选标签（'全部'、'仅看红旗病例'）。 */
 const conditionSet = new Set(CASES.map((c) => c.cond));

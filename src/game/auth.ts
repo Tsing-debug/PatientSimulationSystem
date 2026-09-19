@@ -81,6 +81,9 @@ export async function apiFetch<T = any>(
     data = null;
   }
   if (!res.ok) {
+    if (res.status === 401) {
+      window.dispatchEvent(new Event('auth-expired'));
+    }
     const detail = data?.detail ?? data?.message;
     const msg =
       typeof detail === 'string' ? detail : detail != null ? JSON.stringify(detail) : `请求失败 (${res.status})`;

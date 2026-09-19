@@ -15,8 +15,8 @@ import type { PaletteName } from '../styles/palettes';
 import type { Case as MedKitCase } from '../data/cases';
 import { CASES, getCase, getCaseClinic, getPatientCase } from '../data/cases';
 import {
-  clearAllConversationStorage,
   clearAllPatientConversations,
+  clearPatientConversationStorage,
   ensureAudioContext,
   resetPatientConversation,
 } from '../voice/conversationStore';
@@ -128,6 +128,10 @@ class Store {
     authToken: getStoredToken(),
     skillProfile: null,
     trainingFocus: '',
+    crcEvaluation: null,
+    crcEvaluationStatus: 'idle',
+    crcEvaluationError: null,
+    caseCatalogRevision: 0,
   };
 
   private listeners = new Set<() => void>();
@@ -240,6 +244,10 @@ class Store {
    *  the clinic has no cases at all. Returns null only if the catalogue
    *  is somehow empty. */
   pickNextCaseId = (): string | null => {
+    if (this.state.dialogueBackend === 'crc') {
+      const roster = CASES.filter((c) => c.id.startsWith('crc-study-'));
+      return roster.find((c) => !this.attemptedCaseIds.has(c.id))?.id ?? roster[0]?.id ?? null;
+    }
     const clinic = this.state.polyclinic.clinic;
     const inClinic = (
       clinic === 'all-specialties'
@@ -311,17 +319,67 @@ class Store {
     });
   };
 
-  /** Admin action: reset the whole demo shift and all patient openings. */
-  resetAllPatients = () => {
+  beginCrcEvaluation = () => this.set({
+    crcEvaluation: null,
+    crcEvaluationStatus: 'loading',
+    crcEvaluationError: null,
+  });
+
+  refreshCaseCatalog = () => this.set({
+    caseCatalogRevision: this.state.caseCatalogRevision + 1,
+  });
+
+  clearPolyclinicPatient = () => {
     clearAllPatientConversations();
-    clearAllConversationStorage();
-    this.attemptedCaseIds.clear();
+    this.set({ polyclinic: { ...this.state.polyclinic, patient: null }, screen: 'library' });
+  };
+
+  setCrcEvaluation = (crcEvaluation: GameState['crcEvaluation']) => this.set({
+    crcEvaluation,
+    crcEvaluationStatus: crcEvaluation ? 'ready' : 'error',
+    crcEvaluationError: crcEvaluation ? null : '评分接口未返回评估报告。',
+  });
+
+  failCrcEvaluation = (error: string) => this.set({
+    crcEvaluation: null,
+    crcEvaluationStatus: 'error',
+    crcEvaluationError: error,
+  });
+
+  /** Admin action: reset patients belonging to the selected trial projects. */
+  resetPatientsByTrials = (trials: Iterable<string>) => {
+    const selectedTrials = new Set(trials);
+    const selectedCases = CASES.filter((patientCase) => selectedTrials.has(patientCase.trial));
+    const selectedCaseIds = new Set(selectedCases.map((patientCase) => patientCase.id));
+    if (selectedCaseIds.size === 0) return 0;
+
+    // The live cache uses a shared polyclinic bed, so dispose it wholesale;
+    // persisted histories for trials outside the selection remain untouched.
+    clearAllPatientConversations();
+    clearPatientConversationStorage(selectedCaseIds);
+    for (const caseId of selectedCaseIds) this.attemptedCaseIds.delete(caseId);
+
+    const activeCaseId = this.state.polyclinic.patient?.case.id;
+    const clearActivePatient = Boolean(activeCaseId && selectedCaseIds.has(activeCaseId));
+    const clearLastEncounter = Boolean(
+      this.state.lastEncounter?.case.id && selectedCaseIds.has(this.state.lastEncounter.case.id),
+    );
     this.set({
-      selectedCaseId: CASES[0]?.id ?? 'ct-001',
-      polyclinic: { ...this.state.polyclinic, patient: null },
-      lastEncounter: null,
-      screen: 'home',
+      selectedCaseId: selectedCaseIds.has(this.state.selectedCaseId)
+        ? selectedCases[0].id
+        : this.state.selectedCaseId,
+      polyclinic: clearActivePatient
+        ? { ...this.state.polyclinic, patient: null }
+        : this.state.polyclinic,
+      lastEncounter: clearLastEncounter ? null : this.state.lastEncounter,
     });
+    return selectedCaseIds.size;
+  };
+
+  /** Backward-compatible full reset used by callers that need every case. */
+  resetAllPatients = () => {
+    const allTrials = new Set(CASES.map((patientCase) => patientCase.trial));
+    return this.resetPatientsByTrials(allTrials);
   };
 
   /** "Accept the next patient" — drop straight into the 3D encounter with

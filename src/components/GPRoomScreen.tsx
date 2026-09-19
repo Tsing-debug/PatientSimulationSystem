@@ -37,26 +37,29 @@ export function GPRoomScreen() {
   const state = useGameState();
   const activeClinic = state.polyclinic.clinic;
   const [pickerOpen, setPickerOpen] = useState(false);
+  const roster = useMemo(() => state.dialogueBackend === 'crc'
+    ? CASES.filter(c => c.id.startsWith('crc-study-')) : CASES,
+    [state.dialogueBackend, state.caseCatalogRevision]);
 
   // Cases from the active clinic — that's what "Accept the next patient"
   // will walk through. 'all-specialties' pulls from every roster.
   const clinicCases = useMemo(() => {
-    if (activeClinic === 'all-specialties') return CASES;
-    return CASES.filter((c) => c.clinic === activeClinic);
-  }, [activeClinic]);
+    if (activeClinic === 'all-specialties' || state.dialogueBackend === 'crc') return roster;
+    return roster.filter((c) => c.clinic === activeClinic);
+  }, [activeClinic, roster, state.dialogueBackend]);
 
-  const totalAll = CASES.length;
+  const totalAll = roster.length;
   const queueAhead = clinicCases.length;
-  const nextId = store.pickNextCaseId() ?? clinicCases[0]?.id ?? CASES[0]?.id;
+  const nextId = store.pickNextCaseId() ?? clinicCases[0]?.id;
   const next = nextId ? getCase(nextId) : null;
 
   // Only show clinics that actually have at least one case in the
   // catalogue, plus the synthetic "all" option at the top.
   const availableClinics = useMemo(() => {
     return CLINIC_IDS.filter(
-      (id) => id === 'all-specialties' || CASES.some((c) => c.clinic === id),
+      (id) => id === 'all-specialties' || roster.some((c) => c.clinic === id),
     );
-  }, []);
+  }, [roster]);
 
   return (
     <div className="screen" style={{ background: 'var(--cream)', position: 'relative' }}>

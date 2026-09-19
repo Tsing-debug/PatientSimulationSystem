@@ -72,7 +72,8 @@ export function getOrCreatePatientConversation(
     // namespace the key but wipe it on CRC init.
     storageKey: `conv_history_${patientCase.id}`,
     backend: dialogueBackend,
-    crcStudy: resolveCrcStudy(patientCase.id),
+    crcStudy: patientCase.crcStudy || resolveCrcStudy(patientCase.id),
+    crcLanguage: patientCase.crcLanguage ?? 'zh',
   });
   cache.set(bedIndex, { conv, caseId: patientCase.id });
   return conv;
@@ -124,6 +125,18 @@ export function clearAllConversationStorage() {
       if (k && k.startsWith('conv_history_')) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // localStorage may be blocked — non-fatal
+  }
+}
+
+/** Clear persisted dialogue only for the requested patients. */
+export function clearPatientConversationStorage(caseIds: Iterable<string>) {
+  if (typeof window === 'undefined') return;
+  try {
+    for (const caseId of caseIds) {
+      window.localStorage.removeItem(`conv_history_${caseId}`);
+    }
   } catch {
     // localStorage may be blocked — non-fatal
   }

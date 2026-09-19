@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Html } from '@react-three/drei';
-import type { ActivePatient } from '../../game/types';
+import type { ActivePatient, CrcEvaluationReport } from '../../game/types';
 import type { ConversationStatus, SubtitleEvent } from '../../voice/conversation';
 import { getExistingConversation, getOrCreatePatientConversation } from '../../voice/conversationStore';
 import { store } from '../../game/store';
@@ -43,6 +43,7 @@ export function FloatingVoicePanel({
     onProgress: (m: string) => void;
     onSubtitle: (sub: SubtitleEvent) => void;
     onError: (e: string) => void;
+    onEnded: (evaluation?: CrcEvaluationReport) => void;
   } | null>(null);
   if (listenersRef.current === null) {
     listenersRef.current = {
@@ -52,6 +53,15 @@ export function FloatingVoicePanel({
       // head — the doctor's transcript stays in the chat panel.
       onSubtitle: (sub) => { if (sub.who === 'patient') setSubtitle(sub); },
       onError: (e) => setError(e),
+      onEnded: (evaluation) => {
+        store.finishPolyclinicCase();
+        if (evaluation && typeof evaluation.overall_score === 'number') {
+          store.setCrcEvaluation(evaluation);
+        } else {
+          store.failCrcEvaluation('会话已结束，但自动评分失败，请稍后重试。');
+        }
+        store.setScreen('debrief');
+      },
     };
   }
   const listeners = listenersRef.current;

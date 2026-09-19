@@ -95,7 +95,7 @@ def test_parse_and_preserve_criteria() -> None:
     )
 
 
-async def test_live() -> int:
+async def run_live() -> int:
     config = BackgroundConfig.from_env()
     try:
         config.require_api_key()
@@ -128,7 +128,7 @@ def main() -> None:
     if args.live or not args.parse_only:
         # 默认只跑离线；显式 --live 才打 API
         if args.live:
-            raise SystemExit(asyncio.run(test_live()))
+            raise SystemExit(asyncio.run(run_live()))
         print("[OK] offline checks passed (use --live for API call)")
 
 

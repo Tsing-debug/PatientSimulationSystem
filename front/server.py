@@ -14,8 +14,10 @@ import asyncio
 import base64
 import json
 import logging
+import secrets
 import shutil
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -86,6 +88,10 @@ SESSIONS_BASE = _ROOT / "service" / "acknowledge" / "dialogue_sessions"
 
 ACK_DIR = _ROOT / "service" / "acknowledge"
 STUDY_CATALOG_FILE = ACK_DIR / "study_catalog.json"
+PATIENT_INITIALIZATIONS_FILE = (
+    _ROOT / "service" / "accounts" / "patient_initializations.json"
+)
+_patient_initializations_lock = threading.RLock()
 UPLOADS_BASE = ACK_DIR / "uploaded_trials"
 DRAFTS_BASE = UPLOADS_BASE / "drafts"
 UPLOAD_MAX_BYTES = 25 * 1024 * 1024
@@ -108,6 +114,7 @@ class StartSessionBody(BaseModel):
     focus: str | None = None
     # 前端病例卡的首句；同一研究可挂多个患者，不能复用研究默认首句
     opening_line: str | None = Field(default=None, max_length=500)
+    language: str = Field(default="zh", pattern="^(zh|en)$")
 
 
 class ReplyBody(BaseModel):
@@ -126,7 +133,33 @@ def _list_ready_studies() -> list[dict[str, Any]]:
     opening_dir = _ROOT / "service" / "acknowledge" / "opening_state"
     if not opening_dir.is_dir():
         return []
+    catalog_by_stem = {
+        normalize_stem(str(item.get("stem", ""))): item
+        for item in load_study_catalog()
+        if isinstance(item, dict) and item.get("stem")
+    }
     items: list[dict[str, Any]] = []
+
+    def study_item(stem: str, ready: bool, opening_path: Path | None = None) -> dict[str, Any]:
+        catalog = catalog_by_stem.get(normalize_stem(stem), {})
+        opening: dict[str, Any] = {}
+        if opening_path and opening_path.is_file():
+            try:
+                loaded = json.loads(opening_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    opening = loaded
+            except (OSError, json.JSONDecodeError):
+                logger.warning("Invalid opening-state JSON for study %s", stem)
+        return {
+            "stem": stem,
+            "label": str(catalog.get("label") or stem),
+            "description": str(catalog.get("description") or ""),
+            "tags": catalog.get("tags") if isinstance(catalog.get("tags"), list) else [],
+            "ready": ready,
+            "patient_card_deleted": stem in _load_patient_initializations().get("deleted_stems", []),
+            "opening": opening,
+        }
+
     for p in sorted(opening_dir.glob("*.opening.json")):
         stem = p.name[: -len(".opening.json")]
         paths = resolve_study(stem)
@@ -135,7 +168,7 @@ def _list_ready_studies() -> list[dict[str, Any]]:
             and paths.concerns.is_file()
             and (p.is_file() or (paths.background.is_file() and paths.concerns.is_file()))
         )
-        items.append({"stem": stem, "label": stem, "ready": ready})
+        items.append(study_item(stem, ready, p))
     for stem in {
         p.name[: -len(".background.json")]
         for p in (_ROOT / "service" / "acknowledge" / "relative_experiment").glob(
@@ -146,7 +179,7 @@ def _list_ready_studies() -> list[dict[str, Any]]:
             continue
         paths = resolve_study(stem)
         if paths.background.is_file() and paths.concerns.is_file():
-            items.append({"stem": stem, "label": stem, "ready": True})
+            items.append(study_item(stem, True, paths.opening))
     items.sort(key=lambda x: x["stem"])
     return items
 
@@ -472,6 +505,15 @@ async def start_session(body: StartSessionBody) -> dict[str, Any]:
     if body.opening_line and body.opening_line.strip():
         opening["患者台词"] = body.opening_line.strip()
 
+    language_instruction = (
+        "The patient must speak natural conversational English only for the entire session."
+        if body.language == "en"
+        else "患者在整个会话中只使用自然口语中文。"
+    )
+    training_focus = "\n".join(
+        part for part in ((body.focus or "").strip(), language_instruction) if part
+    )
+
     session_dir = _new_session_dir()
     session = DialogueSession.create_from_opening(
         session_dir=session_dir,
@@ -482,7 +524,7 @@ async def start_session(body: StartSessionBody) -> dict[str, Any]:
         concerns_path=str(paths.concerns.resolve()),
         opening_path=opening_path_str,
         study_stem=paths.stem,
-        training_focus=(body.focus or "").strip(),
+        training_focus=training_focus,
     )
     _attach_persona_meta(
         session,
@@ -701,6 +743,15 @@ class RolePatchBody(BaseModel):
     disabled: bool | None = None
 
 
+class PatientInitializationBody(BaseModel):
+    trials: list[str] = Field(..., min_length=1)
+    language: str = Field(default="zh", pattern="^(zh|en)$")
+
+
+class PersonalPatientRegenerationBody(BaseModel):
+    stems: list[str] = Field(..., min_length=1)
+
+
 def _bearer_token(authorization: str | None = Header(default=None)) -> str:
     if not authorization:
         return ""
@@ -800,6 +851,89 @@ def training_profile(
     return recommend_study(records, catalog=load_study_catalog())
 
 
+def _load_patient_initializations() -> dict[str, Any]:
+    if not PATIENT_INITIALIZATIONS_FILE.is_file():
+        return {"versions": {}, "languages": {}, "active_stems": [], "deleted_stems": [], "user_initializations": {}, "updated_at": ""}
+    try:
+        data = json.loads(PATIENT_INITIALIZATIONS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"versions": {}, "languages": {}, "active_stems": [], "deleted_stems": [], "user_initializations": {}, "updated_at": ""}
+    versions = data.get("versions") if isinstance(data, dict) else None
+    languages = data.get("languages") if isinstance(data, dict) else None
+    return {
+        "versions": versions if isinstance(versions, dict) else {},
+        "languages": languages if isinstance(languages, dict) else {},
+        "active_stems": data.get("active_stems", []) if isinstance(data, dict) else [],
+        "deleted_stems": data.get("deleted_stems", []) if isinstance(data, dict) else [],
+        "user_initializations": data.get("user_initializations", {}) if isinstance(data, dict) else {},
+        "updated_at": str(data.get("updated_at", "")) if isinstance(data, dict) else "",
+    }
+
+
+@app.get("/api/patient-initializations")
+def patient_initializations(
+    user: dict[str, Any] = Depends(_current_user),
+) -> dict[str, Any]:
+    """Return the global per-trial reset versions visible to student clients."""
+    return _load_patient_initializations()
+
+
+@app.get("/api/patient-catalog")
+def patient_catalog(user: dict[str, Any] = Depends(_current_user)) -> dict[str, Any]:
+    """One shared snapshot for students, staff and administrators."""
+    with _patient_initializations_lock:
+        state = _load_patient_initializations()
+        personal = state.get("user_initializations", {}).get(user["username"], {})
+        studies = _list_ready_studies()
+        for study in studies:
+            override = personal.get(study["stem"], {}) if isinstance(personal, dict) else {}
+            study["personal_seed"] = override.get("seed") if isinstance(override, dict) else None
+        return {**state, "studies": studies}
+
+
+@app.post("/api/patient-catalog/regenerate")
+def regenerate_personal_patients(
+    body: PersonalPatientRegenerationBody,
+    user: dict[str, Any] = Depends(_current_user),
+) -> dict[str, Any]:
+    """Regenerate only the current user's initialized patient cards."""
+    stems = list(dict.fromkeys(stem.strip() for stem in body.stems if stem.strip()))
+    with _patient_initializations_lock:
+        state = _load_patient_initializations()
+        active = set(state.get("active_stems", [])) - set(state.get("deleted_stems", []))
+        invalid = [stem for stem in stems if stem not in active]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"患者未初始化或已删除：{', '.join(invalid)}")
+        all_users = dict(state.get("user_initializations", {}))
+        mine = dict(all_users.get(user["username"], {}))
+        catalog = {str(item.get("stem")): item for item in load_study_catalog()}
+        versions = state.get("versions", {})
+        for stem in stems:
+            label = str(catalog.get(stem, {}).get("label") or stem)
+            mine[stem] = {
+                "seed": secrets.randbits(31),
+                "base_version": int(versions.get(label, 0)),
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+            }
+        all_users[user["username"]] = mine
+        state["user_initializations"] = all_users
+        _json_atomic_write(PATIENT_INITIALIZATIONS_FILE, state)
+    return {"ok": True, "updated_stems": stems}
+
+
+@app.delete("/api/admin/patient-cards/{stem}")
+def delete_patient_card(stem: str, user: dict[str, Any] = Depends(_current_user)) -> dict[str, Any]:
+    _require_role(user, "admin")
+    if not any(item.get("stem") == stem for item in load_study_catalog()):
+        raise HTTPException(status_code=404, detail="试验不存在")
+    with _patient_initializations_lock:
+        state = _load_patient_initializations()
+        state["deleted_stems"] = sorted(set(state.get("deleted_stems", [])) | {stem})
+        state["active_stems"] = [x for x in state.get("active_stems", []) if x != stem]
+        _json_atomic_write(PATIENT_INITIALIZATIONS_FILE, state)
+    return {"ok": True}
+
+
 @app.get("/api/admin/users")
 def admin_list_users(user: dict[str, Any] = Depends(_current_user)) -> dict[str, Any]:
     _require_role(user, "admin")
@@ -860,6 +994,59 @@ def admin_records(
 def admin_studies(user: dict[str, Any] = Depends(_current_user)) -> dict[str, Any]:
     _require_role(user, "admin")
     return {"catalog": load_study_catalog(), "roles": list(ROLES)}
+
+
+@app.post("/api/admin/patient-initializations")
+async def admin_initialize_patients(
+    body: PatientInitializationBody,
+    user: dict[str, Any] = Depends(_current_user),
+) -> dict[str, Any]:
+    """Increment selected trial versions so every student refreshes those patients."""
+    _require_role(user, "admin")
+    trials = list(dict.fromkeys(x.strip() for x in body.trials if x.strip()))
+    if not trials:
+        raise HTTPException(status_code=400, detail="至少选择一个试验项目")
+    catalog = load_study_catalog()
+    selected = []
+    for trial in trials:
+        item = next((x for x in catalog if trial in (x.get("label"), x.get("stem"))), None)
+        if item is None:
+            raise HTTPException(status_code=400, detail=f"试验不存在：{trial}")
+        selected.append(item)
+    for item in selected:
+        try:
+            await _ensure_study_assets(item["stem"])
+        except Exception as exc:
+            logger.exception("Patient initialization failed: %s", item["stem"])
+            raise HTTPException(status_code=503, detail=f"「{item.get('label', item['stem'])}」训练资料生成失败，尚未初始化。模型服务可能繁忙，请稍后再次点击初始化。") from exc
+    with _patient_initializations_lock:
+        state = _load_patient_initializations()
+        versions = dict(state["versions"])
+        languages = dict(state["languages"])
+        for trial in trials:
+            versions[trial] = int(versions.get(trial, 0)) + 1
+            languages[trial] = body.language
+        updated = {
+            "versions": versions,
+            "languages": languages,
+            "active_stems": sorted(set(state.get("active_stems", [])) | {item["stem"] for item in selected}),
+            "deleted_stems": sorted(set(state.get("deleted_stems", [])) - {item["stem"] for item in selected}),
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "updated_trials": trials,
+        }
+        # An administrator's global initialization has higher precedence: all
+        # personal variants for these studies are cleared for every account.
+        selected_stems = {item["stem"] for item in selected}
+        updated["user_initializations"] = {
+            username: {
+                stem: value for stem, value in overrides.items()
+                if stem not in selected_stems
+            }
+            for username, overrides in state.get("user_initializations", {}).items()
+            if isinstance(overrides, dict)
+        }
+        _json_atomic_write(PATIENT_INITIALIZATIONS_FILE, updated)
+    return updated
 
 
 def _json_atomic_write(path: Path, data: Any) -> None:
@@ -973,13 +1160,36 @@ def _existing_stems() -> set[str]:
     return existing
 
 
+_asset_locks: dict[str, asyncio.Lock] = {}
+
+
+async def _ensure_study_assets(stem: str) -> None:
+    from service.agent.run_pipeline import _amain as pipeline_main
+
+    async with _asset_locks.setdefault(stem, asyncio.Lock()):
+        paths = resolve_study(stem)
+        for stage, path in (("background", paths.background), ("concerns", paths.concerns), ("opening", paths.opening)):
+            if path.is_file():
+                continue
+            for attempt in range(3):
+                try:
+                    code = await pipeline_main(["--study", stem, "--stages", stage])
+                    if code != 0 or not path.is_file():
+                        raise RuntimeError(f"Stage {stage} failed with exit {code}")
+                    break
+                except Exception as exc:
+                    if attempt == 2 or not any(marker in str(exc) for marker in ("429", "503", "ServerOverloaded")):
+                        raise
+                    await asyncio.sleep(2 ** (attempt + 1))
+
+
 async def _generate_study_assets(stem: str) -> None:
     """后台生成训练资产（背景 / 顾虑池 / 开场状态），失败仅记录日志，不影响登记。"""
     from service.agent.run_pipeline import _amain as pipeline_main
 
     try:
-        code = await pipeline_main(["--study", stem, "--stages", "prep"])
-        logger.info("[admin/studies] assets generated stem=%s exit=%s", stem, code)
+        await _ensure_study_assets(stem)
+        logger.info("[admin/studies] assets generated stem=%s", stem)
     except Exception:  # noqa: BLE001
         logger.exception("[admin/studies] assets generation failed stem=%s", stem)
 

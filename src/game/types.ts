@@ -79,6 +79,11 @@ export interface PatientCase {
   criticalTreatmentIds: string[];
   diagnosisOptions: string[];
   rubric?: CaseRubric;
+  /** CRC study asset stem. Runtime-imported studies carry this directly so
+   *  newly registered trials never require a hard-coded case-id mapping. */
+  crcStudy?: string;
+  /** Language selected by the administrator when this trial was initialized. */
+  crcLanguage?: 'zh' | 'en';
 }
 
 // ── OSCE rubric — grades a completed encounter ────────────────────────
@@ -193,6 +198,25 @@ export interface PolyclinicSlice {
 
 export type DialogueBackend = 'crc' | 'livekit';
 
+export interface CrcEvaluationDimension {
+  category: string;
+  dimension: string;
+  score: number;
+  passed: boolean;
+  evidence?: string;
+  suggestion?: string;
+}
+
+export interface CrcEvaluationReport {
+  overall_score: number;
+  passed: boolean;
+  summary: string;
+  dimensions: CrcEvaluationDimension[];
+  principles: Record<string, string>;
+  strengths: string[];
+  improvements: string[];
+}
+
 // ── Combined game state ──
 export interface GameState {
   screen: Screen;
@@ -226,4 +250,10 @@ export interface GameState {
   skillProfile: import('./auth').SkillProfile | null;
   /** 下一轮训练目标（来自能力画像推荐），随会话注入患者扮演提示。 */
   trainingFocus: string;
+  /** CRC 入组前沟通结束后，由 /evaluate 返回的专项评估报告。 */
+  crcEvaluation: CrcEvaluationReport | null;
+  crcEvaluationStatus: 'idle' | 'loading' | 'ready' | 'error';
+  crcEvaluationError: string | null;
+  /** Increments when ready studies are merged into the runtime case roster. */
+  caseCatalogRevision: number;
 }

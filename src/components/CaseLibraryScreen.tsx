@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { DoodleScatter, PatientFace, TopBar } from './primitives';
-import { CASES, CONDITION_COLORS, type Case } from '../data/cases';
+import { CASES, CONDITION_COLORS, getPatientCase, type Case } from '../data/cases';
 import { store, useStore, useTweaks } from '../game/store';
+import { apiFetch } from '../game/auth';
+import { syncPatientInitializations } from '../game/patientInitializationSync';
 
 interface CaseCardProps {
   c: Case;
@@ -131,13 +133,22 @@ function rosterOrder(id: string, seed: number): number {
 export function CaseLibraryScreen() {
   const tweaks = useTweaks();
   const dialogueBackend = useStore((s) => s.dialogueBackend);
+  const caseCatalogRevision = useStore((s) => s.caseCatalogRevision);
   const [rosterSeed, setRosterSeed] = useState(() => Math.random());
   const [filter, setFilter] = useState<IndicationFilter>('all');
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState('');
+  const authUser = useStore((s) => s.authUser);
 
-  // CRC 主轨只展示已与入组前研究资产绑定的角色；普通门诊病例属于旧轨。
+  // CRC 主轨展示所有已绑定试验资产的患者；未配置试验的
+  // 普通门诊病例属于旧轨。
   const availableCases = useMemo(
-    () => (dialogueBackend === 'crc' ? CASES.filter((c) => c.id === 'ct-001') : CASES),
-    [dialogueBackend],
+    () => (
+      dialogueBackend === 'crc'
+        ? CASES.filter((c) => c.id.startsWith('crc-study-'))
+        : CASES
+    ),
+    [dialogueBackend, caseCatalogRevision],
   );
 
   // Group by the trial/project assigned by the admin catalogue. Diagnosis is
@@ -178,13 +189,25 @@ export function CaseLibraryScreen() {
 
   const totalVisible = visibleGroups.reduce((n, [, list]) => n + list.length, 0);
 
-  const shuffle = () => {
-    setRosterSeed(Math.random());
+  const shuffle = async () => {
     const pool = visibleGroups.flatMap(([, list]) => list);
     const fallback = pool.length > 0 ? pool : availableCases;
-    if (fallback.length === 0) return;
-    const pick = fallback[Math.floor(Math.random() * fallback.length)];
-    store.selectCase(pick.id);
+    const stems = fallback.map((item) => getPatientCase(item.id)?.crcStudy).filter((stem): stem is string => Boolean(stem));
+    if (stems.length === 0 || !authUser) return;
+    setRegenerating(true);
+    setRegenerateError('');
+    try {
+      await apiFetch('/api/patient-catalog/regenerate', {
+        method: 'POST',
+        body: JSON.stringify({ stems }),
+      });
+      await syncPatientInitializations(authUser.username);
+      setRosterSeed(Math.random());
+    } catch (error) {
+      setRegenerateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   const trialChips: Array<{ id: IndicationFilter; label: string; icon?: string }> = [
@@ -233,10 +256,16 @@ export function CaseLibraryScreen() {
           className="btn-plush mint"
           style={{ fontSize: 16, padding: '12px 22px', whiteSpace: 'nowrap' }}
           onClick={shuffle}
+          disabled={regenerating || totalVisible === 0}
         >
-          🔀 随机重新生成 / Regenerate ({totalVisible})
+          {regenerating ? '正在生成个人患者…' : `🔀 随机重新生成 / Regenerate (${totalVisible})`}
         </button>
       </div>
+      {regenerateError && (
+        <div style={{ margin: '10px 28px 0', color: '#B42318', fontWeight: 700 }}>
+          {regenerateError}
+        </div>
+      )}
 
       {/* Clinic filter chip row */}
       <div

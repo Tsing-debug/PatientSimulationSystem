@@ -1,21 +1,13 @@
-/**
- * One-shot runner for every verification script. Exits with code 1 if any
- * check returns violations. Used by the medkit-verify-simulation skill and
- * (eventually) by the /loop routine.
+/** CRC-main-track verification runner. Legacy ER / GP checks are available
+ * separately via `npm run verify:legacy` and do not block the CRC release.
  */
 
-import { verifyDataIntegrity } from './data-integrity.ts';
-import { verifyTriagePriority } from './triage-priority.ts';
-import { verifyThreeScene } from './three-scene.ts';
-import { verifyRubricCitations } from './rubric-smoke.ts';
+import { verifyCrcAssets } from './crc-assets.ts';
 
 type Violation = { case: string; rule: string; detail: string };
 
 const checks: Array<{ name: string; run: () => Violation[] }> = [
-  { name: 'data-integrity', run: verifyDataIntegrity },
-  { name: 'triage-priority', run: verifyTriagePriority },
-  { name: 'three-scene', run: verifyThreeScene },
-  { name: 'rubric-citations', run: verifyRubricCitations },
+  { name: 'crc-assets', run: verifyCrcAssets },
 ];
 
 let totalViolations = 0;

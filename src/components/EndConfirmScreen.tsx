@@ -2,6 +2,8 @@ import { DoodleScatter, PatientFace, TopBar } from './primitives';
 import { getCase } from '../data/cases';
 import { store, useStore, useTweaks } from '../game/store';
 import type { EndConfirmChecks } from '../game/types';
+import { POLYCLINIC_BED_INDEX } from '../game/store';
+import { getExistingConversation } from '../voice/conversationStore';
 
 interface Item {
   id: keyof EndConfirmChecks;
@@ -20,6 +22,20 @@ export function EndConfirmScreen() {
   const checked = useStore((s) => s.endConfirm);
   const caseId = useStore((s) => s.selectedCaseId);
   const c = getCase(caseId);
+
+  const finishAndEvaluate = async () => {
+    const conversation = getExistingConversation(POLYCLINIC_BED_INDEX);
+    store.beginCrcEvaluation();
+    store.finishPolyclinicCase();
+    store.setScreen('debrief');
+    try {
+      if (!conversation) throw new Error('未找到本次患者沟通记录，请返回咨询室后重试。');
+      const report = await conversation.evaluateCrcSession();
+      store.setCrcEvaluation(report);
+    } catch (error) {
+      store.failCrcEvaluation(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   return (
     <div className="screen" style={{ background: 'var(--cream)', position: 'relative' }}>
@@ -159,7 +175,7 @@ export function EndConfirmScreen() {
               type="button"
               className="btn-plush primary"
               style={{ flex: 1.4 }}
-              onClick={() => store.setScreen('debrief')}
+              onClick={() => void finishAndEvaluate()}
             >
               结束入组前沟通 →
             </button>

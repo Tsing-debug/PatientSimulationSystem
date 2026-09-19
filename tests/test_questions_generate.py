@@ -38,7 +38,7 @@ DEFAULT_CRC = (
 )
 
 
-def test_parse_question_list() -> int:
+def run_parse_question_list() -> int:
     """不调用网络的解析单测。"""
     print("=== 解析单测（无需 API）===")
     cases = [
@@ -68,6 +68,10 @@ def test_parse_question_list() -> int:
         return 1
     print("[OK] 解析单测全部通过")
     return 0
+
+
+def test_parse_question_list() -> None:
+    assert run_parse_question_list() == 0
 
 
 async def run_batch(count: int, topic: str | None, disease: str) -> int:
@@ -200,10 +204,10 @@ def main() -> None:
     )
 
     if args.parse_only:
-        raise SystemExit(test_parse_question_list())
+        raise SystemExit(run_parse_question_list())
 
     # 先跑解析，再跑联调
-    parse_code = test_parse_question_list()
+    parse_code = run_parse_question_list()
     if parse_code != 0:
         raise SystemExit(parse_code)
 

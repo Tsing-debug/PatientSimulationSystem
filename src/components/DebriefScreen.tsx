@@ -15,7 +15,7 @@ import type {
   DomainScore,
   VerdictBand,
 } from '../agents/customTools';
-import type { ActivePatient, PatientCase } from '../game/types';
+import type { ActivePatient, CrcEvaluationReport, PatientCase } from '../game/types';
 
 // ── verdict / colour mapping ───────────────────────────────────────
 
@@ -484,6 +484,7 @@ function GradingProgress({ partialNarration }: { partialNarration: string }) {
 
 export function DebriefScreen() {
   const state = useGameState();
+  const isCrc = state.dialogueBackend === 'crc' && !state.viewedEvalHistoryId;
 
   // Review-mode: when viewedEvalHistoryId is set, render a saved evaluation
   // from localStorage instead of running the agent against a fresh request.
@@ -502,10 +503,10 @@ export function DebriefScreen() {
 
   // In review mode, skip the agent — we already have the evaluation.
   const debriefRequest = useMemo(() => {
-    if (reviewed) return null;
+    if (reviewed || isCrc) return null;
     if (!c || !patient) return null;
     return buildDebriefRequest(c, patient);
-  }, [reviewed, c, patient]);
+  }, [reviewed, isCrc, c, patient]);
 
   const live = useAttendingDebrief(debriefRequest);
   const status = reviewed ? ('got-evaluation' as const) : live.status;
@@ -546,7 +547,25 @@ export function DebriefScreen() {
       <TopBar here={5} steps={['综合门诊', '全科', '病例', '简报', '问诊', '复盘']} />
 
       <div style={{ padding: '28px 36px 60px', maxWidth: 1080, margin: '0 auto' }}>
-        {!c || !patient ? (
+        {isCrc ? (
+          state.crcEvaluationStatus === 'loading' ? (
+            <GradingProgress partialNarration="" />
+          ) : state.crcEvaluationStatus === 'error' ? (
+            <StatusBanner
+              title="无法生成评估报告"
+              body={state.crcEvaluationError ?? '评分失败，请返回咨询室后重试。'}
+              bg="var(--rose)"
+            />
+          ) : state.crcEvaluation ? (
+            <CrcEvaluationBody evaluation={state.crcEvaluation} />
+          ) : (
+            <StatusBanner
+              title="尚无评估结果"
+              body="结束入组前沟通后，系统会根据完整对话生成评估报告。"
+              bg="var(--cream-2)"
+            />
+          )
+        ) : !c || !patient ? (
           <StatusBanner
             title="没有可复盘的活跃病例"
             body="本次问诊已被清除。请从病例库中选择一个新病例重新开始。"
@@ -596,6 +615,81 @@ export function DebriefScreen() {
         </div>
       </div>
     </div>
+  );
+}
+
+function CrcEvaluationBody({ evaluation }: { evaluation: CrcEvaluationReport }) {
+  const score = Math.round(evaluation.overall_score * 10) / 10;
+  const tone = evaluation.passed ? 'var(--mint)' : 'var(--rose)';
+  return (
+    <>
+      <div className="plush-lg popin" style={{ background: tone, padding: 24, marginBottom: 22 }}>
+        <div className="chip butter" style={{ marginBottom: 12 }}>CRC 沟通评估报告</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
+          <div className="plush" style={{ width: 112, height: 112, background: 'white', display: 'grid', placeItems: 'center' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 38, lineHeight: 1, fontWeight: 900 }}>{score}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink-2)' }}>/ 100</div>
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <h1 style={{ fontSize: 32, margin: '0 0 8px' }}>{evaluation.passed ? '评估合格' : '评估未合格'}</h1>
+            <div style={{ fontSize: 15, lineHeight: 1.55, fontWeight: 650 }}>{evaluation.summary}</div>
+          </div>
+        </div>
+      </div>
+
+      <section style={{ marginBottom: 22 }}>
+        <h2 style={{ fontSize: 22, marginBottom: 12 }}>分项评分</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+          {evaluation.dimensions.map((item) => (
+            <div key={`${item.category}-${item.dimension}`} className="plush" style={{ background: 'white', padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--ink-2)' }}>{item.category}</div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>{item.dimension}</div>
+                </div>
+                <div className="chip" style={{ background: item.passed ? 'var(--mint)' : 'var(--rose)', whiteSpace: 'nowrap' }}>
+                  {item.score}/100
+                </div>
+              </div>
+              {item.evidence && <p style={{ fontSize: 13, lineHeight: 1.5, margin: '12px 0 6px' }}><b>对话依据：</b>{item.evidence}</p>}
+              {item.suggestion && <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: 'var(--ink-2)' }}><b>改进建议：</b>{item.suggestion}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 22 }}>
+        <ReportList title="做得好的地方" items={evaluation.strengths} bg="var(--mint)" />
+        <ReportList title="下一步改进" items={evaluation.improvements} bg="var(--butter)" />
+      </div>
+
+      {Object.keys(evaluation.principles).length > 0 && (
+        <section className="plush-lg" style={{ background: 'var(--sky)', padding: 20 }}>
+          <h2 style={{ fontSize: 20, margin: '0 0 12px' }}>核心沟通原则</h2>
+          {Object.entries(evaluation.principles).map(([name, text]) => (
+            <div key={name} style={{ marginTop: 10 }}>
+              <div style={{ fontWeight: 900 }}>{name}</div>
+              <div style={{ fontSize: 13, lineHeight: 1.5 }}>{text}</div>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function ReportList({ title, items, bg }: { title: string; items: string[]; bg: string }) {
+  return (
+    <section className="plush" style={{ background: bg, padding: 18 }}>
+      <h2 style={{ fontSize: 19, margin: '0 0 10px' }}>{title}</h2>
+      {items.length > 0 ? (
+        <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14, lineHeight: 1.65, fontWeight: 650 }}>
+          {items.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}
+        </ul>
+      ) : <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>暂无</div>}
+    </section>
   );
 }
 

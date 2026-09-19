@@ -358,6 +358,7 @@ def build_system_prompt(
         "若提示已达上限，必须动作=结束，收尾并保留未决事项。\n\n"
         "【输出 Schema 示例】\n"
         f"{schema}\n\n"
+        f"{focus_para}\n"
         "动作可选："
         + " / ".join(ACTIONS)
         + "。只输出一个 JSON 对象，不要 markdown 代码块，不要其它说明。"
@@ -404,6 +405,31 @@ def build_user_prompt(
 
 
 _JSON_OBJECT_RE = re.compile(r"\{[\s\S]*\}")
+
+_CRC_END_RE = re.compile(
+    r"(?:结束|停止|终止|退出|到此为止|不(?:想)?测了|不继续了)"
+    r"(?:这次|本次|当前)?(?:测评|测试|评估|沟通|对话|咨询|会话)?"
+    r"|(?:测评|测试|评估|沟通|对话|咨询|会话)(?:结束|停止|终止)",
+    re.IGNORECASE,
+)
+_CRC_ABUSE_RE = re.compile(
+    r"(?:傻[逼比]|蠢货|废物|垃圾|白痴|智障|脑残|闭嘴|滚(?:蛋|开)?|去死|操你|妈的|"
+    r"fuck\s*(?:you|off)?|idiot|stupid|moron|shut\s*up)",
+    re.IGNORECASE,
+)
+
+
+def detect_forced_end(crc_reply: str) -> tuple[str, str] | None:
+    """Program-level terminal intents must not depend on model discretion."""
+    text = str(crc_reply or "").strip()
+    if _CRC_END_RE.search(text):
+        return "好的，本次沟通就到这里，谢谢。", "CRC 主动结束测评"
+    if _CRC_ABUSE_RE.search(text):
+        return (
+            "我不能接受这样的说话方式，这次沟通先结束吧。",
+            "沟通不尊重，患者终止交流",
+        )
+    return None
 
 
 def parse_turn_json(text: str) -> dict[str, Any]:
@@ -989,19 +1015,39 @@ class PatientTurnAgent:
     ) -> TurnResult:
         """写入 CRC 回答 → 生成患者回合 → 校验 → 保存状态与对话。"""
         session.dialogue.append({"role": "crc", "content": crc_reply.strip()})
+        forced_end = detect_forced_end(crc_reply)
         patient_turn_count = sum(
             1 for x in session.dialogue if x.get("role") == "patient"
         )
-        result = await self.respond(
-            background=session.background,
-            concerns=session.concerns,
-            portrait=session.portrait,
-            prev_state=session.state,
-            dialogue=session.dialogue,
-            crc_reply=crc_reply,
-            patient_turn_count=patient_turn_count,
-            training_focus=session.training_focus,
-        )
+        if forced_end:
+            line, reason = forced_end
+            state = dict(session.state)
+            state["当前情绪"] = "厌恶" if _CRC_ABUSE_RE.search(crc_reply) else "中性"
+            state["参与态度"] = "终止沟通"
+            result = normalize_turn(
+                {
+                    "患者画像": session.portrait,
+                    "状态": state,
+                    "动作": "结束",
+                    "患者台词": line,
+                    "是否结束": True,
+                    "结束原因": reason,
+                },
+                locked_portrait=session.portrait,
+                prev_state=session.state,
+                crc_reply=crc_reply,
+            )
+        else:
+            result = await self.respond(
+                background=session.background,
+                concerns=session.concerns,
+                portrait=session.portrait,
+                prev_state=session.state,
+                dialogue=session.dialogue,
+                crc_reply=crc_reply,
+                patient_turn_count=patient_turn_count,
+                training_focus=session.training_focus,
+            )
         session.state = result.state
         session.portrait = result.data["患者画像"]
         session.dialogue.append({"role": "patient", "content": result.line})

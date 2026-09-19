@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { store, useScreen, useTweaks } from './game/store';
+import { store, useGameState, useScreen, useTweaks } from './game/store';
+import { syncPatientInitializations } from './game/patientInitializationSync';
 import { applyIntensity, applyPalette } from './styles/palettes';
 import { SplashScreen } from './components/SplashScreen';
 import { LoginScreen } from './components/LoginScreen';
@@ -22,6 +23,12 @@ import { BackgroundMusic } from './components/BackgroundMusic';
 export default function App() {
   const screen = useScreen();
   const tweaks = useTweaks();
+  const { authUser, authToken } = useGameState();
+  useEffect(() => {
+    const onExpired = () => store.logout();
+    window.addEventListener('auth-expired', onExpired);
+    return () => window.removeEventListener('auth-expired', onExpired);
+  }, []);
 
   useEffect(() => {
     applyPalette(tweaks.palette);
@@ -30,6 +37,30 @@ export default function App() {
   useEffect(() => {
     applyIntensity(tweaks.intensity);
   }, [tweaks.intensity]);
+
+  useEffect(() => {
+    if (!authToken || !authUser || !['student', 'staff', 'admin'].includes(authUser.role)) return;
+    let active = true;
+    let syncing = false;
+    const sync = () => {
+      if (syncing) return;
+      syncing = true;
+      void syncPatientInitializations(authUser.username).catch((error) => {
+        if (active) console.warn('Patient initialization sync failed:', error);
+      }).finally(() => { syncing = false; });
+    };
+    sync();
+    const interval = window.setInterval(sync, 3_000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [authToken, authUser?.role, authUser?.username, screen]);
 
   // Minimal path-based route: /agentic-rounds boots straight into the
   // architecture page so the demo can deep-link to it.

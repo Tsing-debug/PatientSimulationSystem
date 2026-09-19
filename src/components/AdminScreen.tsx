@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { TopBar } from './primitives';
 import { store, useGameState } from '../game/store';
 import { apiFetch, type AuthUser } from '../game/auth';
+import { CASES } from '../data/cases';
+import { syncPatientInitializations } from '../game/patientInitializationSync';
 
 type Tab = 'users' | 'stats' | 'studies';
 
@@ -66,7 +68,19 @@ export function AdminScreen() {
   const [jsonText, setJsonText] = useState('');
   const [generateAssets, setGenerateAssets] = useState(true);
   const [dragActive, setDragActive] = useState(false);
+  const [initializingPatients, setInitializingPatients] = useState(false);
+  const [initializationLanguage, setInitializationLanguage] = useState<'zh' | 'en'>('zh');
+  const [selectedInitTrials, setSelectedInitTrials] = useState<Set<string>>(
+    () => new Set(),
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const initializableTrials = Array.from(
+    new Set(
+      catalog
+        .map((study) => (study.label || study.stem).trim())
+        .filter(Boolean),
+    ),
+  );
 
   const loadUsers = useCallback(async () => {
     try {
@@ -98,8 +112,14 @@ export function AdminScreen() {
   useEffect(() => {
     if (tab === 'users') loadUsers();
     else if (tab === 'stats') loadStats();
-    else loadStudies();
-  }, [tab, loadUsers, loadStats, loadStudies]);
+  }, [tab, loadUsers, loadStats]);
+
+  // The patient-initialization selector and the study catalogue must share
+  // one live source. Load it on every admin-screen mount, not only when the
+  // user opens the "studies" tab.
+  useEffect(() => {
+    void loadStudies();
+  }, [loadStudies]);
 
   // —— 上传 CDE 临床试验 → 新增疾病类型 ——
   const splitList = (text: string): string[] =>
@@ -250,16 +270,128 @@ export function AdminScreen() {
                 <option value={3}>3 · 困难 / Hard</option>
               </select>
             </label>
+            <details style={{ position: 'relative' }}>
+              <summary
+                className="chip"
+                style={{ cursor: 'pointer', listStyle: 'none', whiteSpace: 'nowrap' }}
+              >
+                初始化范围：{selectedInitTrials.size}/{initializableTrials.length} 个试验 ▾
+              </summary>
+              <div
+                className="plush"
+                style={{
+                  position: 'absolute',
+                  zIndex: 20,
+                  right: 0,
+                  top: 'calc(100% + 8px)',
+                  width: 360,
+                  padding: 12,
+                  background: 'white',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 13 }}>选择需要初始化的试验</strong>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => setSelectedInitTrials(new Set(initializableTrials))}
+                    >
+                      全选
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => setSelectedInitTrials(new Set())}
+                    >
+                      清空
+                    </button>
+                  </div>
+                </div>
+                {initializableTrials.length === 0 && (
+                  <div style={{ padding: '8px 0', fontSize: 13, color: 'var(--ink-2)' }}>
+                    正在加载试验目录…
+                  </div>
+                )}
+                {initializableTrials.map((trial) => {
+                  const patientCount = CASES.filter(
+                    (patient) => patient.trial === trial,
+                  ).length;
+                  return (
+                    <label
+                      key={trial}
+                      style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '7px 0', fontSize: 13 }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedInitTrials.has(trial)}
+                        onChange={(event) => {
+                          setSelectedInitTrials((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(trial);
+                            else next.delete(trial);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span>
+                        {trial}{' '}
+                        <small>（{patientCount > 0 ? `${patientCount} 位患者` : '新增试验患者'}）</small>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </details>
+            <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              患者语言
+              <select
+                value={initializationLanguage}
+                onChange={(event) => setInitializationLanguage(event.target.value as 'zh' | 'en')}
+                style={{ border: '2px solid var(--line)', borderRadius: 8, padding: '3px 6px', fontWeight: 800 }}
+              >
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+            </label>
             <button
               type="button"
               className="btn-plush primary"
               style={{ fontSize: 13, padding: '9px 14px' }}
-              onClick={() => {
-                store.resetAllPatients();
-                setNotice('✅ 已初始化全部患者：清空旧对话、人设和首句；病例目录已保留 5 位患者。');
+              disabled={selectedInitTrials.size === 0 || initializingPatients}
+              onClick={async () => {
+                setInitializingPatients(true);
+                setError('');
+                setNotice('正在检查并补齐训练资料，请等待初始化完成…');
+                try {
+                  await apiFetch('/api/admin/patient-initializations', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      trials: Array.from(selectedInitTrials),
+                      language: initializationLanguage,
+                    }),
+                  });
+                  // Pull the ready-study catalogue first so newly registered
+                  // trials exist as real cases before their reset is applied.
+                  if (authUser?.username) {
+                    await syncPatientInitializations(authUser.username);
+                  } else {
+                    store.resetPatientsByTrials(selectedInitTrials);
+                  }
+                  setNotice(
+                    `✅ 已用${initializationLanguage === 'zh' ? '中文' : '英文'}全局初始化 ` +
+                      `${selectedInitTrials.size} 个试验项目的患者；` +
+                      '学生端将自动同步。',
+                  );
+                } catch (err) {
+                  setNotice('');
+                  setError(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setInitializingPatients(false);
+                }
               }}
             >
-              ↻ 一键初始化全部患者
+              {initializingPatients ? '初始化中…' : '↻ 初始化所选患者'}
             </button>
             <button
               type="button"
@@ -269,6 +401,27 @@ export function AdminScreen() {
             >
               ← 返回主页
             </button>
+            <button
+              type="button"
+              className="btn-plush ghost"
+              disabled={initializingPatients || selectedInitTrials.size === 0}
+              onClick={async () => {
+                setInitializingPatients(true);
+                setError('');
+                setNotice('');
+                try {
+                  for (const study of catalog.filter(s => selectedInitTrials.has(s.label || s.stem))) {
+                    await apiFetch(`/api/admin/patient-cards/${encodeURIComponent(study.stem)}`, { method: 'DELETE' });
+                  }
+                  if (authUser) await syncPatientInitializations(authUser.username);
+                  setNotice('已删除所选试验的患者卡，试验资料保留；其他端将自动同步。重新初始化可恢复。');
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setInitializingPatients(false);
+                }
+              }}
+            >删除所选患者卡</button>
           </div>
         </div>
 

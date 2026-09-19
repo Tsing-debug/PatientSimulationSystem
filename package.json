@@ -8,6 +8,7 @@
     "build": "node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build",
     "preview": "node node_modules/vite/bin/vite.js preview",
     "verify": "node scripts/verify/run-all.ts",
+    "verify:legacy": "node scripts/verify/run-legacy.ts",
     "test": "node scripts/test/run-all.ts"
   },
   "dependencies": {

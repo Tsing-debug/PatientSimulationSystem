@@ -1,0 +1,108 @@
+{
+  "source": "药物临床试验登记与信息公示平台",
+  "source_id": "",
+  "basic_info": {
+    "registration_no": "CTR20263618",
+    "status": "进行中",
+    "status_detail": "尚未招募",
+    "first_public_date": "2026-09-17",
+    "applicant_name": "神州细胞工程有限公司"
+  },
+  "title_and_background": {
+    "drug_name": "SCTB35注射液",
+    "drug_type": "生物制品",
+    "indication": "非霍奇金淋巴瘤",
+    "scientific_title": "一项评估SCTB35联合SCTB41与化疗不联用或联用在非霍奇金淋巴瘤患者中的药代动力学、安全性、耐受性及有效性的Ib/Ⅱ期临床研究",
+    "public_title": "SCTB35联合SCTB41与化疗不联用或联用在非霍奇金淋巴瘤的Ib/Ⅱ期临床研究",
+    "protocol_no": "SCTB35 - SCTB41 - X201",
+    "phase": "Ib/Ⅱ期"
+  },
+  "clinical_trial": {
+    "purpose": {
+      "primary": [
+        "评估SCTB35联合SCTB41和/或化疗在NHL中的安全性、耐受性、PK/PD以及初步抗肿瘤活性和免疫原性，以及明确MTD和RP2D"
+      ],
+      "secondary": [],
+      "exploratory": []
+    },
+    "design": {
+      "category": "安全性和有效性",
+      "phase": "Ib/Ⅱ期",
+      "design_type": "单臂试验",
+      "randomization": "非随机化",
+      "blinding": "开放",
+      "scope": "国内试验"
+    },
+    "subjects": {
+      "age": "18岁(最小年龄)至80岁(最大年龄)",
+      "sex": "男+女",
+      "healthy_volunteers": false,
+      "inclusion_criteria": [
+        "年龄18 - 80岁，男女不限",
+        "依据组织病理学确诊为NHL试验参与者",
+        "Ib期：至少接受过两种既往全身治疗后复发或难治性疾病",
+        "基于CT或MRI至少有一个可测量病灶",
+        "ECOG体力状态评分0、1或2",
+        "具备充足的肝功能/造血功能/肾/心功能",
+        "预期生存期3个月以上"
+      ],
+      "exclusion_criteria": [
+        "既往使用过任何CD3xCD20双特异性抗体（BsAbs）或包含CD3xCD20靶点的多特异性抗体",
+        "既往同时使用过PD - 1/PD - L1联合贝伐珠单抗（或其类似物）或同时靶向PD - (L)1/VEGF(R)、PD - (L)1/TGF - β的双抗或多抗类药物",
+        "适合高剂量化疗联合造血干细胞移植（HSCT）的试验参与者",
+        "已知淋巴瘤中枢神经系统（CNS）侵犯",
+        "研究入组前2周内存在需要静脉抗生素治疗的活动性感染",
+        "首次给药前4周内或5个药物半衰期内（以时间较短者为准）接受了任何化疗、其他抗癌药物、或其他在研药物",
+        "经研究者判定，不适合入组的其他情况或会妨碍、限制、混淆方案规定的评估"
+      ]
+    },
+    "arms": {
+      "investigational_drugs": [
+        "SCTB35注射液；1mL/瓶；按照方案规定使用",
+        "SCTB41注射液；100mg/瓶；按照方案规定使用"
+      ],
+      "control_drugs": []
+    },
+    "endpoints": {
+      "primary": [
+        {
+          "measure": "剂量限制性毒性（DLT）",
+          "time_frame": "研究期间",
+          "type": "安全性指标"
+        },
+        {
+          "measure": "客观缓解率（ORR）",
+          "time_frame": "研究期间",
+          "type": "有效性指标"
+        }
+      ],
+      "secondary": [
+        {
+          "measure": "客观缓解率（ORR）、完全缓解率（CRR）、缓解持续时间（DOR）、完全缓解持续时间（DOCR）、无进展生存期（PFS）、至缓解时间（TTR）、至完全缓解时间（TTCR）、总生存期（OS）",
+          "time_frame": "研究期间",
+          "type": "有效性指标"
+        },
+        {
+          "measure": "治疗期间不良事件（TEAE）、治疗相关的TEAE（TRAE）、严重不良事件（SAE）、特别关注不良事件（AESI）",
+          "time_frame": "研究期间",
+          "type": "安全性指标"
+        },
+        {
+          "measure": "SCTB35和SCTB41的血清药物浓度",
+          "time_frame": "约6个月",
+          "type": "安全性指标"
+        },
+        {
+          "measure": "SCTB35和SCTB41的抗药抗体（ADA）和中和抗体（NAb）阳性率或滴度",
+          "time_frame": "研究期间",
+          "type": "安全性指标"
+        }
+      ]
+    }
+  },
+  "recruitment": {
+    "target_enrollment": 30,
+    "enrolled": null,
+    "first_informed_consent_date": null
+  }
+}

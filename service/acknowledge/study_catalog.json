@@ -47,6 +47,102 @@
         "生物等效性",
         "首次入组"
       ]
+    },
+    {
+      "stem": "Non - Hodgkin lymphoma",
+      "label": "非霍奇金淋巴瘤（Ib/Ⅱ期试验）",
+      "description": "适合练习向非霍奇金淋巴瘤患者解释联合用药试验的相关信息，包括入排标准、试验目的和流程等。",
+      "difficulty": 1,
+      "focus_dimensions": [
+        "信息传递",
+        "知情同意",
+        "个性化适配"
+      ],
+      "tags": [
+        "联合用药",
+        "非随机",
+        "开放"
+      ]
+    },
+    {
+      "stem": "Iron deficiency anemia",
+      "label": "缺铁性贫血（生物等效性预试验）",
+      "description": "适合练习与缺铁性贫血患者沟通，重点在于解释试验目的、流程及安全性相关问题。",
+      "difficulty": 2,
+      "focus_dimensions": [
+        "信息传递",
+        "知情同意",
+        "个性化适配"
+      ],
+      "tags": [
+        "首次入组",
+        "生物等效性",
+        "缺铁性贫血"
+      ]
+    },
+    {
+      "stem": "Upadacitinib Sustained - release Tablets",
+      "label": "乌帕替尼缓释片人体生物等效性试验",
+      "description": "适合练习与健康受试者沟通，重点是详细告知试验流程、注意事项及潜在风险。",
+      "difficulty": 2,
+      "focus_dimensions": [
+        "信息传递",
+        "知情同意",
+        "个性化适配"
+      ],
+      "tags": [
+        "生物等效性",
+        "健康受试者",
+        "空腹餐后"
+      ]
+    },
+    {
+      "stem": "Omeprazole Enteric Capsules Bioequivalence",
+      "label": "奥美拉唑肠溶胶囊空腹生物等效性试验",
+      "description": "适合练习与健康受试者沟通，重点在于清晰传达试验目的、流程及各项要求。",
+      "difficulty": 1,
+      "focus_dimensions": [
+        "信息传递",
+        "知情同意",
+        "个性化适配"
+      ],
+      "tags": [
+        "健康受试者",
+        "生物等效性",
+        "交叉设计"
+      ]
+    },
+    {
+      "stem": "Levofloxacin Bioequivalence",
+      "label": "左氧氟沙星片空腹人体生物等效性试验",
+      "description": "适合练习与健康受试者沟通，重点在于清晰传达试验流程和注意事项。",
+      "difficulty": 1,
+      "focus_dimensions": [
+        "信息传递",
+        "知情同意",
+        "个性化适配"
+      ],
+      "tags": [
+        "生物等效性",
+        "健康受试者",
+        "交叉设计"
+      ]
+    },
+    {
+      "stem": "Finerenone Tablets Bioequivalence",
+      "label": "非奈利酮片生物等效性试验",
+      "description": "适合练习与健康成年受试者沟通，重点在于详细解释试验流程、潜在风险及注意事项。",
+      "difficulty": 2,
+      "focus_dimensions": [
+        "信息传递",
+        "知情同意",
+        "个性化适配"
+      ],
+      "tags": [
+        "健康受试者",
+        "交叉设计",
+        "单剂量"
+      ]
     }
   ]
 }

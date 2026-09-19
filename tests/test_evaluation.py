@@ -74,7 +74,7 @@ BAD_DIALOGUE = [
 ]
 
 
-def test_local() -> int:
+def run_local() -> int:
     """不调用网络：标准文件、解析与规整。"""
     print("=== 本地单测（无需 API）===")
     failed = 0
@@ -140,6 +140,10 @@ def test_local() -> int:
         return 1
     print("[OK] 本地单测全部通过")
     return 0
+
+
+def test_local() -> None:
+    assert run_local() == 0
 
 
 async def run_eval(*, use_bad: bool, trainee: str | None) -> int:
@@ -249,9 +253,9 @@ def main() -> None:
     )
 
     if args.parse_only:
-        raise SystemExit(test_local())
+        raise SystemExit(run_local())
 
-    code = test_local()
+    code = run_local()
     if code != 0:
         raise SystemExit(code)
     print()

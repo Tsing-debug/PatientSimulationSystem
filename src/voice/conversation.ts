@@ -35,6 +35,7 @@ import {
 import { hasClaudeKey, streamClaude, type ChatMessage } from './claude';
 import {
   crcCreateSession,
+  crcEvaluateSession,
   crcReply,
   crcTts,
   crcVoiceTurn,
@@ -43,7 +44,7 @@ import {
   stopCrcAudio,
   type CrcSessionPayload,
 } from './crcClient';
-import type { DialogueBackend } from '../game/types';
+import type { CrcEvaluationReport, DialogueBackend } from '../game/types';
 import { getTrainingFocus } from '../game/trainingContext';
 import { getStoredToken, submitTrainingRecord } from '../game/auth';
 
@@ -78,6 +79,7 @@ export interface ConversationListeners {
   onSubtitle?: (sub: SubtitleEvent) => void;
   onError?: (err: string) => void;
   onEmotion?: (e: PatientEmotion) => void;
+  onEnded?: (evaluation?: CrcEvaluationReport) => void;
 }
 
 function detectEmotion(text: string): PatientEmotion {
@@ -104,6 +106,7 @@ export interface ConversationOptions {
   backend?: DialogueBackend;
   /** CRC study stem when backend === 'crc'. */
   crcStudy?: string;
+  crcLanguage?: 'zh' | 'en';
 }
 
 interface VoiceTokenResponse {
@@ -145,6 +148,7 @@ export class Conversation {
   private storageKey: string | null = null;
   private backend: DialogueBackend = 'livekit';
   private crcStudy: string;
+  private crcLanguage: 'zh' | 'en';
   private crcSessionId: string | null = null;
   /** Bumps whenever a new CRC utterance starts — drops stale TTS responses. */
   private crcSpeakSeq = 0;
@@ -170,6 +174,7 @@ export class Conversation {
     this.storageKey = options.storageKey ?? null;
     this.backend = options.backend ?? 'livekit';
     this.crcStudy = options.crcStudy ?? resolveCrcStudy(this.caseId);
+    this.crcLanguage = options.crcLanguage ?? 'zh';
     this.ampBuf = new Uint8Array(1024);
 
     const restored = this.loadMessages();
@@ -253,7 +258,10 @@ export class Conversation {
       }
       this.saveMessages();
       this.emitMessages();
-      if (data.ended) void this.maybeSubmitCrcRecord(data);
+      if (data.ended) {
+        void this.maybeSubmitCrcRecord(data);
+        this.listeners.onEnded?.(data.evaluation as CrcEvaluationReport | undefined);
+      }
     } catch (err: any) {
       console.error('CRC voice turn failed:', err);
       this.listeners.onError?.(err?.message ?? String(err));
@@ -272,8 +280,8 @@ export class Conversation {
    * 会话结束时上报训练记录（登录用户），并刷新能力画像。
    * 仅当评估结果可用且该会话尚未上报过时执行。
    */
-  private async maybeSubmitCrcRecord(data: CrcSessionPayload): Promise<void> {
-    if (!data.ended || !data.evaluation) return;
+  private async maybeSubmitCrcRecord(data: CrcSessionPayload, force = false): Promise<void> {
+    if ((!force && !data.ended) || !data.evaluation) return;
     if (this.crcRecordSubmitted) return;
     const token = getStoredToken();
     if (!token || token === 'guest') return;
@@ -313,6 +321,19 @@ export class Conversation {
       console.warn('训练记录上报失败:', err);
       this.crcRecordSubmitted = false;
     }
+  }
+
+  /** Manually finish a CRC encounter, request its report, and persist training data. */
+  async evaluateCrcSession(): Promise<CrcEvaluationReport> {
+    if (this.backend !== 'crc' || !this.crcSessionId) {
+      throw new Error('CRC 会话尚未建立，请先与患者完成至少一轮沟通。');
+    }
+    const data = await crcEvaluateSession(this.crcSessionId);
+    if (!data.evaluation || typeof data.evaluation !== 'object') {
+      throw new Error('评分接口未返回评估报告。');
+    }
+    await this.maybeSubmitCrcRecord(data, true);
+    return data.evaluation as CrcEvaluationReport;
   }
 
   private loadMessages(): ChatMessage[] | null {
@@ -553,6 +574,7 @@ export class Conversation {
       }
       const session = await crcCreateSession({
         study: this.crcStudy,
+        language: this.crcLanguage,
         randomPersona: false,
         focus: getTrainingFocus(),
         // The selected patient owns the opening line. The backend study is
@@ -758,7 +780,10 @@ export class Conversation {
           }
         }
         this.setStatus(data.ended ? 'ready' : 'ready');
-        if (data.ended) void this.maybeSubmitCrcRecord(data);
+        if (data.ended) {
+          void this.maybeSubmitCrcRecord(data);
+          this.listeners.onEnded?.(data.evaluation as CrcEvaluationReport | undefined);
+        }
       } catch (err: any) {
         console.error('CRC reply failed:', err);
         this.listeners.onError?.(err?.message ?? String(err));

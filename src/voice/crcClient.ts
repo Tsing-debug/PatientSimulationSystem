@@ -39,6 +39,7 @@ function errMsg(data: any, status: number): string {
 
 export async function crcCreateSession(opts: {
   study: string;
+  language?: 'zh' | 'en';
   randomPersona?: boolean;
   focus?: string;
   openingLine?: string;
@@ -48,6 +49,7 @@ export async function crcCreateSession(opts: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       study: opts.study,
+      language: opts.language ?? 'zh',
       random_persona: Boolean(opts.randomPersona),
       focus: opts.focus || undefined,
       opening_line: opts.openingLine || undefined,
@@ -66,6 +68,15 @@ export async function crcReply(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
+  });
+  const data = await parseJson(res);
+  if (!res.ok) throw new Error(errMsg(data, res.status));
+  return data as CrcSessionPayload;
+}
+
+export async function crcEvaluateSession(sessionId: string): Promise<CrcSessionPayload> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/evaluate`, {
+    method: 'POST',
   });
   const data = await parseJson(res);
   if (!res.ok) throw new Error(errMsg(data, res.status));
@@ -121,16 +132,28 @@ export async function crcTts(
   };
 }
 
-export async function crcListStudies(): Promise<Array<{ stem: string; ready: boolean }>> {
+export interface CrcReadyStudy {
+  stem: string;
+  label: string;
+  description?: string;
+  tags?: string[];
+  ready: boolean;
+  opening?: Record<string, unknown>;
+}
+
+export async function crcListStudies(): Promise<CrcReadyStudy[]> {
   const res = await fetch('/api/studies');
   const data = await parseJson(res);
   if (!res.ok) throw new Error(errMsg(data, res.status));
-  return (data?.studies ?? []) as Array<{ stem: string; ready: boolean }>;
+  return (data?.studies ?? []) as CrcReadyStudy[];
 }
 
 /** Map medkit case ids → CRC study stems (opening/background artifacts). */
 const CASE_TO_STUDY: Record<string, string> = {
   'ct-001': 'Phloroglucinol Orally Disintegrating Tablets',
+  'im-001': 'B-cell malignancies',
+  'im-002': 'Non - Hodgkin lymphoma',
+  'card-001': 'Chronic rhinosinusitis with nasal polyps',
 };
 
 export const DEFAULT_CRC_STUDY = 'Chronic rhinosinusitis with nasal polyps';
