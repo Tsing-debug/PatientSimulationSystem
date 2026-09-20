@@ -418,7 +418,7 @@ export function Wordmark({ size = 36, dark = false }: WordmarkProps) {
       }}
     >
       <span style={{ position: 'relative', display: 'inline-block' }}>
-        med
+        patient
         <span
           style={{
             color: 'var(--peach-deep)',
@@ -427,7 +427,7 @@ export function Wordmark({ size = 36, dark = false }: WordmarkProps) {
             paintOrder: 'stroke fill',
           }}
         >
-          kit
+          SIM
         </span>
         <span
           style={{

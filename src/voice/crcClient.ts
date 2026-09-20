@@ -83,6 +83,21 @@ export async function crcEvaluateSession(sessionId: string): Promise<CrcSessionP
   return data as CrcSessionPayload;
 }
 
+/** Speech-to-text only — no patient turn, no TTS. Used by the composer
+ *  dock's mic button so the recognised text lands in the input box for
+ *  the doctor to edit before sending. */
+export async function sttTranscribe(
+  audio: Blob,
+  filename = 'speech.wav',
+): Promise<string> {
+  const form = new FormData();
+  form.append('audio', audio, filename);
+  const res = await fetch('/api/stt', { method: 'POST', body: form });
+  const data = await parseJson(res);
+  if (!res.ok) throw new Error(errMsg(data, res.status));
+  return String(data?.text ?? '').trim();
+}
+
 /** Push-to-talk: upload WAV → CRC ASR + PatientTurn + TTS. */
 export async function crcVoiceTurn(
   sessionId: string,
